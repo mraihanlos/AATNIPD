@@ -1,0 +1,6 @@
+{
+  "name": "Network Inspector - Sistem Monitoring Tekanan Pipa",
+  "description": "Aplikasi pelaporan tekanan pipa jaringan fluida & gas, analisis distribusi kualitas, inspeksi geofence dan telemetri industri.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,181 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role-based access information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["inspector", "manager"] },
+        "avatar": { "type": "string" },
+        "inspectorId": { "type": "string" },
+        "department": { "type": "string" },
+        "verified": { "type": "boolean" },
+        "activeSector": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "PCArea": {
+      "title": "PCArea",
+      "description": "Pressure Control Area specification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "region": { "type": "string" },
+        "description": { "type": "string" },
+        "nominalPressureBar": { "type": "number" },
+        "toleranceBar": { "type": "number" },
+        "color": { "type": "string" },
+        "activeNodesCount": { "type": "number" }
+      },
+      "required": ["id", "name", "region"]
+    },
+    "InspectionLocation": {
+      "title": "InspectionLocation",
+      "description": "Pipe inspection node location and geofence configuration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "pcAreaId": { "type": "string" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "radiusMeters": { "type": "number" },
+        "nominalPressure": { "type": "number" },
+        "valveType": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "pcAreaId", "title", "latitude", "longitude"]
+    },
+    "InspectionRecord": {
+      "title": "InspectionRecord",
+      "description": "Manometer pressure inspection record with telemetry and photo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "pcAreaId": { "type": "string" },
+        "locationId": { "type": "string" },
+        "locationTitle": { "type": "string" },
+        "pressureBar": { "type": "number" },
+        "pressurePsi": { "type": "number" },
+        "unit": { "type": "string" },
+        "status": { "type": "string" },
+        "statusLabel": { "type": "string" },
+        "inspectorId": { "type": "string" },
+        "inspectorName": { "type": "string" },
+        "inspectorInitials": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "photoTag": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "gpsAccuracyMeters": { "type": "number" },
+        "satelliteFix": { "type": "string" },
+        "notes": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "pcAreaId", "locationTitle", "pressureBar", "userId"]
+    },
+    "RepairMaterial": {
+      "title": "RepairMaterial",
+      "description": "Master data for repair material types and spare parts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "defaultUnit": { "type": "string" },
+        "category": { "type": "string" },
+        "standardDimension": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "defaultUnit"]
+    },
+    "NetworkLeakageRecord": {
+      "title": "NetworkLeakageRecord",
+      "description": "Pipe distribution network leakage report and repair record with before/after photos and materials used",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "inspectionDate": { "type": "string" },
+        "repairDate": { "type": "string" },
+        "repairStartTime": { "type": "string" },
+        "repairEndTime": { "type": "string" },
+        "shutOffStartTime": { "type": "string" },
+        "shutOffEndTime": { "type": "string" },
+        "isShutOffOccurred": { "type": "boolean" },
+        "reporterInspector": { "type": "string" },
+        "reportReceivedTime": { "type": "string" },
+        "leakLocationDetail": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "initialReportNotes": { "type": "string" },
+        "photoBeforeUrl": { "type": "string" },
+        "photoAfterUrl": { "type": "string" },
+        "physicalInspectionResult": { "type": "string" },
+        "inspectionNotes": { "type": "string" },
+        "repairActionTaken": { "type": "string" },
+        "mitigationNotes": { "type": "string" },
+        "sopReference": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "leakLocationDetail", "photoBeforeUrl", "physicalInspectionResult", "repairActionTaken"]
+    },
+    "PressureThresholdConfig": {
+      "title": "PressureThresholdConfig",
+      "description": "Master data configuration for optimal and critical pressure thresholds",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "minOptimalBar": { "type": "number" },
+        "maxOptimalBar": { "type": "number" },
+        "minCriticalBar": { "type": "number" },
+        "maxCriticalBar": { "type": "number" },
+        "presetName": { "type": "string" },
+        "notes": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["minOptimalBar", "maxOptimalBar"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection storing role and preferences"
+    },
+    "/pc_areas/{areaId}": {
+      "schema": "PCArea",
+      "description": "Master data for PC Areas (PC 1 to PC 5)"
+    },
+    "/locations/{locationId}": {
+      "schema": "InspectionLocation",
+      "description": "Master data for pipe network locations and geofence parameters"
+    },
+    "/inspections/{inspectionId}": {
+      "schema": "InspectionRecord",
+      "description": "Telemetry logs and pressure inspection records"
+    },
+    "/materials/{materialId}": {
+      "schema": "RepairMaterial",
+      "description": "Master data catalog for repair material types and specifications"
+    },
+    "/leakage_records/{recordId}": {
+      "schema": "NetworkLeakageRecord",
+      "description": "Network distribution leakage incident and maintenance records"
+    },
+    "/system_settings/{settingId}": {
+      "schema": "PressureThresholdConfig",
+      "description": "System settings such as pressure thresholds configuration"
+    }
+  }
+}
