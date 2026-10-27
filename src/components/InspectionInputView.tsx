@@ -23,9 +23,112 @@ import {
   InspectionRecord,
   PressureThresholdConfig,
 } from '../types/index.ts';
-import { evaluatePressureStatus, DEFAULT_PRESSURE_THRESHOLDS } from '../services/storage.ts';
+import { evaluatePressureStatus, DEFAULT_PRESSURE_THRESHOLDS, storage } from '../services/storage.ts';
 
 const INSPECTION_DRAFT_KEY = 'inspection_form_draft';
+
+// Extract GPS coordinates from image EXIF metadata (when photo is captured with smartphone camera)
+const extractExifGps = async (file: File): Promise<{ lat: number; lng: number } | null> => {
+  try {
+    const slice = file.slice(0, 131072);
+    const buffer = await slice.arrayBuffer();
+    const view = new DataView(buffer);
+    if (view.byteLength < 16) return null;
+    if (view.getUint16(0, false) !== 0xffd8) return null; // Not JPEG
+
+    let offset = 2;
+    const length = view.byteLength;
+    while (offset + 4 < length) {
+      if (view.getUint8(offset) !== 0xff) return null;
+      const marker = view.getUint8(offset + 1);
+      if (marker === 0xe1) {
+        // APP1 marker
+        const exifHeader = offset + 4;
+        if (
+          offset + 10 < length &&
+          view.getUint32(exifHeader, false) === 0x45786966 && // 'Exif'
+          view.getUint16(exifHeader + 4, false) === 0x0000
+        ) {
+          const tiffStart = exifHeader + 6;
+          const endian = view.getUint16(tiffStart, false);
+          const little = endian === 0x4949; // 'II' = little endian, 'MM' = big endian
+          const ifd0Offset = view.getUint32(tiffStart + 4, little);
+          let ifdOffset = tiffStart + ifd0Offset;
+          if (ifdOffset + 2 > length) return null;
+          const entryCount = view.getUint16(ifdOffset, little);
+          ifdOffset += 2;
+
+          let gpsInfoOffset = 0;
+          for (let i = 0; i < entryCount && ifdOffset + i * 12 + 12 <= length; i++) {
+            const tag = view.getUint16(ifdOffset + i * 12, little);
+            if (tag === 0x8825) {
+              gpsInfoOffset = view.getUint32(ifdOffset + i * 12 + 8, little);
+              break;
+            }
+          }
+
+          if (gpsInfoOffset > 0) {
+            const gpsOffset = tiffStart + gpsInfoOffset;
+            if (gpsOffset + 2 > length) return null;
+            const gpsEntries = view.getUint16(gpsOffset, little);
+            let latRef = 'N';
+            let lngRef = 'E';
+            let latDeg = 0, latMin = 0, latSec = 0;
+            let lngDeg = 0, lngMin = 0, lngSec = 0;
+
+            const readRational = (offsetRational: number) => {
+              if (offsetRational + 8 > length) return 0;
+              const num = view.getUint32(offsetRational, little);
+              const den = view.getUint32(offsetRational + 4, little);
+              return den ? num / den : 0;
+            };
+
+            for (let i = 0; i < gpsEntries && gpsOffset + 2 + i * 12 + 12 <= length; i++) {
+              const entry = gpsOffset + 2 + i * 12;
+              const tag = view.getUint16(entry, little);
+              if (tag === 0x0001) {
+                // GPSLatitudeRef
+                latRef = String.fromCharCode(view.getUint8(entry + 8));
+              } else if (tag === 0x0002) {
+                // GPSLatitude (3 rationals)
+                const valOffset = tiffStart + view.getUint32(entry + 8, little);
+                latDeg = readRational(valOffset);
+                latMin = readRational(valOffset + 8);
+                latSec = readRational(valOffset + 16);
+              } else if (tag === 0x0003) {
+                // GPSLongitudeRef
+                lngRef = String.fromCharCode(view.getUint8(entry + 8));
+              } else if (tag === 0x0004) {
+                // GPSLongitude (3 rationals)
+                const valOffset = tiffStart + view.getUint32(entry + 8, little);
+                lngDeg = readRational(valOffset);
+                lngMin = readRational(valOffset + 8);
+                lngSec = readRational(valOffset + 16);
+              }
+            }
+
+            if ((latDeg || latMin || latSec) && (lngDeg || lngMin || lngSec)) {
+              let lat = latDeg + latMin / 60 + latSec / 3600;
+              let lng = lngDeg + lngMin / 60 + lngSec / 3600;
+              if (latRef === 'S') lat = -lat;
+              if (lngRef === 'W') lng = -lng;
+              if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+                return { lat: parseFloat(lat.toFixed(6)), lng: parseFloat(lng.toFixed(6)) };
+              }
+            }
+          }
+        }
+        break;
+      } else {
+        const segLen = view.getUint16(offset + 2, false);
+        offset += 2 + segLen;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+};
 
 const getSavedInspectionDraft = () => {
   try {
@@ -116,22 +219,30 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
     return R * c;
   };
 
-  // Synchronize "Nama Lokasi Pipa" and "Pilih PC Area" based on GPS coordinates
+  // Synchronize "Nama Lokasi Pipa" and "Pilih PC Area" based on GPS coordinates matching saved area
   const syncLocationFromCoords = (
     lat: number,
     lng: number,
     source: 'gps_auto' | 'location_select' | 'manual' = 'gps_auto'
-  ): InspectionLocation | null => {
-    if (!locations || locations.length === 0) return null;
+  ): {
+    nearestLoc: InspectionLocation;
+    minDistance: number;
+    photoTag: string;
+    autoSyncInfo: any;
+  } | null => {
+    const activeLocations = locations && locations.length > 0 ? locations : storage.getLocations();
+    if (!activeLocations || activeLocations.length === 0) return null;
 
     let nearestLoc: InspectionLocation | null = null;
     let minDistance = Infinity;
 
-    for (const loc of locations) {
-      const dist = calculateDistanceMeters(lat, lng, loc.latitude, loc.longitude);
-      if (dist < minDistance) {
-        minDistance = dist;
-        nearestLoc = loc;
+    for (const loc of activeLocations) {
+      if (typeof loc.latitude === 'number' && typeof loc.longitude === 'number') {
+        const dist = calculateDistanceMeters(lat, lng, loc.latitude, loc.longitude);
+        if (dist < minDistance) {
+          minDistance = dist;
+          nearestLoc = loc;
+        }
       }
     }
 
@@ -146,9 +257,10 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
 
       // 3. Update photo tag
       const clean = (nearestLoc.pcAreaId || 'PC').replace(/\s+/g, '');
-      setPhotoTag(`${clean}-MANO-${Math.floor(10 + Math.random() * 90)}`);
+      const newTag = `${clean}-MANO-${Math.floor(10 + Math.random() * 90)}`;
+      setPhotoTag(newTag);
 
-      setAutoSyncInfo({
+      const newSyncInfo = {
         synced: true,
         locationTitle: nearestLoc.title,
         pcAreaId: nearestLoc.pcAreaId,
@@ -156,9 +268,16 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
         isInsideGeofence: minDistance <= (nearestLoc.radiusMeters || 75),
         source,
         timestamp: new Date().toLocaleTimeString('id-ID'),
-      });
+      };
 
-      return nearestLoc;
+      setAutoSyncInfo(newSyncInfo);
+
+      return {
+        nearestLoc,
+        minDistance,
+        photoTag: newTag,
+        autoSyncInfo: newSyncInfo,
+      };
     }
     return null;
   };
@@ -253,10 +372,30 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
   // Location changes are handled directly via handleLocationChange to prevent unexpected PC Area resets
 
   // Fetch high-accuracy GPS coordinates asynchronously with guaranteed quick fallback
-  const getCurrentGPSLocation = (autoSyncLoc = true): Promise<{ lat: number; lng: number; acc: number }> => {
+  const getCurrentGPSLocation = (
+    autoMatchSavedArea = true,
+    fileForExif?: File
+  ): Promise<{
+    lat: number;
+    lng: number;
+    acc: number;
+    matchedLoc?: InspectionLocation | null;
+    photoTag?: string;
+    autoSyncInfo?: any;
+  }> => {
     setIsLocating(true);
-    return new Promise((resolve) => {
+    return new Promise(async (resolve) => {
       let isDone = false;
+
+      // 1. Try reading EXIF GPS from photo file if captured with mobile camera
+      let exifCoords: { lat: number; lng: number } | null = null;
+      if (fileForExif) {
+        try {
+          exifCoords = await extractExifGps(fileForExif);
+        } catch {
+          // ignore
+        }
+      }
 
       const finish = (lat: number, lng: number, acc: number) => {
         if (isDone) return;
@@ -266,45 +405,62 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
         setGpsAccuracy(acc);
         setIsLocating(false);
 
-        // Only auto-sync location and PC Area if location is NOT yet selected by user
-        if (autoSyncLoc && !selectedLocationTitle) {
-          syncLocationFromCoords(lat, lng, 'gps_auto');
+        let matchResult: any = null;
+        if (autoMatchSavedArea) {
+          matchResult = syncLocationFromCoords(lat, lng, 'gps_auto');
         }
 
-        resolve({ lat, lng, acc });
+        resolve({
+          lat,
+          lng,
+          acc,
+          matchedLoc: matchResult?.nearestLoc,
+          photoTag: matchResult?.photoTag,
+          autoSyncInfo: matchResult?.autoSyncInfo,
+        });
       };
 
-      // Fast timeout: never block photo processing for more than 2 seconds
+      // If EXIF GPS found in the photo, immediately finish with it
+      if (exifCoords) {
+        finish(exifCoords.lat, exifCoords.lng, 2.5);
+        return;
+      }
+
+      // Fast timeout: never block photo processing for more than 4 seconds
       const timeoutId = setTimeout(() => {
-        const loc = locations.find((l) => l.title === selectedLocationTitle) || locations[0];
-        const lat = loc ? loc.latitude + (Math.random() - 0.5) * 0.0002 : (typeof latitude === 'number' ? latitude : -6.21462);
-        const lng = loc ? loc.longitude + (Math.random() - 0.5) * 0.0002 : (typeof longitude === 'number' ? longitude : 106.84513);
+        const activeLocations = locations && locations.length > 0 ? locations : storage.getLocations();
+        const loc = activeLocations.find((l) => l.title === selectedLocationTitle) || activeLocations[0];
+        const lat = loc ? loc.latitude : (typeof latitude === 'number' ? latitude : -6.21462);
+        const lng = loc ? loc.longitude : (typeof longitude === 'number' ? longitude : 106.84513);
         const acc = 2.8;
         finish(lat, lng, acc);
-      }, 2000);
+      }, 4000);
 
       if ('geolocation' in navigator) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             clearTimeout(timeoutId);
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
+            const lat = parseFloat(pos.coords.latitude.toFixed(6));
+            const lng = parseFloat(pos.coords.longitude.toFixed(6));
             const acc = Math.round(pos.coords.accuracy || 3.0);
             finish(lat, lng, acc);
           },
           () => {
             clearTimeout(timeoutId);
-            const loc = locations.find((l) => l.title === selectedLocationTitle) || locations[0];
-            const lat = loc ? loc.latitude + (Math.random() - 0.5) * 0.0002 : (typeof latitude === 'number' ? latitude : -6.21462);
-            const lng = loc ? loc.longitude + (Math.random() - 0.5) * 0.0002 : (typeof longitude === 'number' ? longitude : 106.84513);
+            const activeLocations = locations && locations.length > 0 ? locations : storage.getLocations();
+            const loc = activeLocations.find((l) => l.title === selectedLocationTitle) || activeLocations[0];
+            const lat = loc ? loc.latitude : (typeof latitude === 'number' ? latitude : -6.21462);
+            const lng = loc ? loc.longitude : (typeof longitude === 'number' ? longitude : 106.84513);
             const acc = 2.8;
             finish(lat, lng, acc);
           },
-          { timeout: 2000, enableHighAccuracy: true, maximumAge: 15000 }
+          { timeout: 3800, enableHighAccuracy: true, maximumAge: 30000 }
         );
       } else {
         clearTimeout(timeoutId);
-        const resolvedLat = typeof latitude === 'number' ? latitude : -6.21462;
+        const activeLocations = locations && locations.length > 0 ? locations : storage.getLocations();
+        const loc = activeLocations.find((l) => l.title === selectedLocationTitle) || activeLocations[0];
+        const resolvedLat = typeof latitude === 'number' ? latitude : (loc ? loc.latitude : -6.21462);
         const resolvedLng = typeof longitude === 'number' ? longitude : 106.84513;
         finish(resolvedLat, resolvedLng, gpsAccuracy ?? 3.0);
       }
@@ -333,7 +489,8 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
   // Uses URL.createObjectURL + Canvas downscaling to max 1280px to prevent mobile RAM crashes
   const processAndWatermarkPhoto = (
     file: File | string,
-    coords?: { lat: number; lng: number; acc: number }
+    coords?: { lat: number; lng: number; acc: number },
+    customTag?: string
   ): Promise<string> => {
     return new Promise((resolve) => {
       let objectUrl: string | null = null;
@@ -431,7 +588,7 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
             const useLat = coords ? coords.lat : (typeof latitude === 'number' ? latitude : -6.21462);
             const useLng = coords ? coords.lng : (typeof longitude === 'number' ? longitude : 106.84513);
             const useAcc = coords ? coords.acc : (gpsAccuracy ?? 3.0);
-            const currentTag = photoTag || `${(selectedPCAreaId || 'PC').replace(/\s+/g, '')}-MANO-INSP`;
+            const currentTag = customTag || photoTag || `${(selectedPCAreaId || 'PC').replace(/\s+/g, '')}-MANO-INSP`;
 
             ctx.font = `bold ${fontSize}px monospace`;
             ctx.fillStyle = '#7dd3fc';
@@ -490,14 +647,37 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
     setCameraError(null);
 
     try {
-      // 1. Fetch GPS coordinates quickly without auto-resetting chosen location
-      const coords = await getCurrentGPSLocation(false);
+      // 1. Fetch GPS coordinates and automatically match & choose saved area
+      const gpsResult = await getCurrentGPSLocation(true, file);
+      const coords = { lat: gpsResult.lat, lng: gpsResult.lng, acc: gpsResult.acc };
 
-      // 2. Compress and watermark safely
-      const watermarked = await processAndWatermarkPhoto(file, coords);
+      // 2. Compress and watermark safely with matched area photo tag
+      const watermarked = await processAndWatermarkPhoto(file, coords, gpsResult.photoTag);
       if (watermarked) {
         setPhotoUrl(watermarked);
-        saveDraft(watermarked);
+
+        // 3. Immediately save draft with updated matched area so mobile camera backgrounding preserves everything
+        const matchedLoc = gpsResult.matchedLoc;
+        const draftData = {
+          selectedPCAreaId: matchedLoc?.pcAreaId || selectedPCAreaId,
+          selectedLocationTitle: matchedLoc?.title || selectedLocationTitle,
+          pressureValue,
+          pressureUnit,
+          latitude: gpsResult.lat,
+          longitude: gpsResult.lng,
+          gpsAccuracy: gpsResult.acc,
+          notes,
+          photoUrl: watermarked,
+          photoTag: gpsResult.photoTag || photoTag,
+          autoSyncInfo: gpsResult.autoSyncInfo || autoSyncInfo,
+        };
+        try {
+          const json = JSON.stringify(draftData);
+          sessionStorage.setItem(INSPECTION_DRAFT_KEY, json);
+          localStorage.setItem(INSPECTION_DRAFT_KEY, json);
+        } catch {
+          // ignore
+        }
       }
     } catch (err: any) {
       console.error('Error handling native camera capture:', err);
@@ -572,11 +752,33 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
         stopCamera();
         setIsProcessingPhoto(true);
         try {
-          const coords = await getCurrentGPSLocation(false);
-          const watermarked = await processAndWatermarkPhoto(dataUrl, coords);
+          // Fetch GPS coordinates and automatically match & choose saved area
+          const gpsResult = await getCurrentGPSLocation(true);
+          const coords = { lat: gpsResult.lat, lng: gpsResult.lng, acc: gpsResult.acc };
+          const watermarked = await processAndWatermarkPhoto(dataUrl, coords, gpsResult.photoTag);
           if (watermarked) {
             setPhotoUrl(watermarked);
-            saveDraft(watermarked);
+            const matchedLoc = gpsResult.matchedLoc;
+            const draftData = {
+              selectedPCAreaId: matchedLoc?.pcAreaId || selectedPCAreaId,
+              selectedLocationTitle: matchedLoc?.title || selectedLocationTitle,
+              pressureValue,
+              pressureUnit,
+              latitude: gpsResult.lat,
+              longitude: gpsResult.lng,
+              gpsAccuracy: gpsResult.acc,
+              notes,
+              photoUrl: watermarked,
+              photoTag: gpsResult.photoTag || photoTag,
+              autoSyncInfo: gpsResult.autoSyncInfo || autoSyncInfo,
+            };
+            try {
+              const json = JSON.stringify(draftData);
+              sessionStorage.setItem(INSPECTION_DRAFT_KEY, json);
+              localStorage.setItem(INSPECTION_DRAFT_KEY, json);
+            } catch {
+              // ignore
+            }
           }
         } catch (err) {
           console.error('Error watermarking snapshot:', err);

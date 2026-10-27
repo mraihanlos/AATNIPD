@@ -91,7 +91,14 @@ export default function App() {
       return [];
     }
   });
-  const [locations, setLocations] = useState<InspectionLocation[]>([]);
+  const [locations, setLocations] = useState<InspectionLocation[]>(() => {
+    try {
+      const cached = storage.getLocations();
+      return cached && cached.length > 0 ? cached : [];
+    } catch {
+      return [];
+    }
+  });
   const [inspections, setInspections] = useState<InspectionRecord[]>([]);
   const [materials, setMaterials] = useState<RepairMaterial[]>([]);
   const [leakageRecords, setLeakageRecords] =
@@ -180,6 +187,7 @@ export default function App() {
     // Subscribe to Master Locations
     const unsubLoc = firebaseService.subscribeLocations((locs) => {
       setLocations(locs);
+      storage.saveLocations(locs);
     });
 
     // Subscribe to Inspection Logs
