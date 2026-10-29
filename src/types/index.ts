@@ -29,6 +29,9 @@ export interface PCArea {
   toleranceBar: number;
   color: string;
   activeNodesCount: number;
+  pipeCount?: number;
+  totalLengthKm?: number;
+  source?: string;
 }
 
 export interface InspectionLocation {
@@ -129,6 +132,7 @@ export interface NetworkLeakageRecord {
   // 2. Data Administrasi & Lokasi Kebocoran
   reporterInspector: string; // Pelapor / Pengawas Lapangan
   reportReceivedTime: string; // Tanggal / Waktu Laporan Masuk (e.g. '11/10/2026 - 15:30 WIB')
+  zona?: 'Zona 1' | 'Zona 2' | string; // Zona 1 atau Zona 2
   leakLocationDetail: string; // Lokasi Kebocoran Detail (Sesuai Berita Acara) *
   latitude: number; // Synchronized when photo "Sebelum" is taken
   longitude: number; // Synchronized when photo "Sebelum" is taken
@@ -147,6 +151,7 @@ export interface NetworkLeakageRecord {
   inspectionNotes?: string; // Catatan Lapangan / Keterangan
   repairActionTaken: string; // Tindakan Perbaikan yang Dilakukan *
   mitigationNotes?: string; // Tindakan Mitigasi / Keterangan
+  estimasiNRW?: string; // Estimasi NRW (Potensi Kehilangan Air, e.g., '12.5 m³/jam')
 
   // 5. Penggunaan Material Perbaikan
   materialsUsed: LeakageMaterialUsed[];

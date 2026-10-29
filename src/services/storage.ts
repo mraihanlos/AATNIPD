@@ -43,53 +43,68 @@ export const SAMPLE_GAUGES = [
 export const DEFAULT_PC_AREAS: PCArea[] = [
   {
     id: 'PC 1',
-    name: 'PC 1 - Sektor Utara (Transmisi Utama & Intake)',
-    region: 'Jakarta Pusat & Utara',
-    description: 'Jalur transmisi intake air baku dan pipa tekanan tinggi Pelabuhan Tanjung Priok',
+    name: 'PC 1 - Wilayah Sepatan',
+    region: 'Sepatan, Kab. Tangerang',
+    description: 'Wilayah intake air baku Sungai Cisadane, Instalasi Pengolahan Air (IPA) Sepatan & Sludge Drying Bed',
     nominalPressureBar: 5.10,
     toleranceBar: 0.4,
-    color: '#006591',
+    color: '#b59e1e',
     activeNodesCount: 12,
+    pipeCount: 1028,
+    totalLengthKm: 106.8,
+    source: 'Batas PC Master',
   },
   {
     id: 'PC 2',
-    name: 'PC 2 - Sektor Industri Barat (West Industrial Core)',
-    region: 'Jakarta Selatan Core',
-    description: 'Distribusi pipa koridor komersial Kuningan, Sudirman dan Rasuna Said',
-    nominalPressureBar: 4.88,
+    name: 'PC 2 - Wilayah Pasar Kemis',
+    region: 'Pasar Kemis, Kab. Tangerang',
+    description: 'Jalur pipa distribusi industri komersial Pasar Kemis, gardu KPP 1, dan kawasan pemukiman',
+    nominalPressureBar: 4.80,
     toleranceBar: 0.35,
-    color: '#0284c7',
+    color: '#8b5cf6',
     activeNodesCount: 14,
+    pipeCount: 1767,
+    totalLengthKm: 158.6,
+    source: 'Batas PC Master',
   },
   {
     id: 'PC 3',
-    name: 'PC 3 - Koridor Barat Ring-1 (Tomang & Slipi)',
-    region: 'Koridor Barat Ring-1',
-    description: 'Jalur pengatur tekanan PRV utama persimpangan Tomang ke Grogol',
-    nominalPressureBar: 3.92,
+    name: 'PC 3 - Wilayah Cikupa',
+    region: 'Cikupa, Kab. Tangerang',
+    description: 'Kawasan industri Cikupa selatan koridor tol, Booster Pump Cikupa, KPP 2 & Inline Pump Bojong',
+    nominalPressureBar: 4.20,
     toleranceBar: 0.5,
-    color: '#eab308',
-    activeNodesCount: 8,
+    color: '#ea580c',
+    activeNodesCount: 10,
+    pipeCount: 894,
+    totalLengthKm: 84.5,
+    source: 'Batas PC Master',
   },
   {
     id: 'PC 4',
-    name: 'PC 4 - Koridor Timur Industri (Pulogadung & Cakung)',
-    region: 'Koridor Timur Industri',
-    description: 'Pipa transmisi baja 16-inch zona manufaktur dan logistik timur',
-    nominalPressureBar: 4.65,
+    name: 'PC 4 - Wilayah Jayanti & Balaraja',
+    region: 'Jayanti & Balaraja, Kab. Tangerang',
+    description: 'Zona barat distribusi pipa air bersih, koridor Balaraja, Jayanti & Inline Pump Mayora',
+    nominalPressureBar: 4.60,
     toleranceBar: 0.3,
-    color: '#10b981',
-    activeNodesCount: 9,
+    color: '#0284c7',
+    activeNodesCount: 11,
+    pipeCount: 1582,
+    totalLengthKm: 121.3,
+    source: 'Batas PC Master',
   },
   {
     id: 'PC 5',
-    name: 'PC 5 - Depo Pelabuhan & Terminal Marunda',
-    region: 'Depo Pelabuhan & Terminal',
-    description: 'Manifold penerimaan pesisir pantai utara & katup pelepas tekanan laut',
-    nominalPressureBar: 4.72,
-    toleranceBar: 0.25,
-    color: '#6366f1',
-    activeNodesCount: 5,
+    name: 'PC 5 - Wilayah Sindang Jaya',
+    region: 'Sindang Jaya, Kab. Tangerang',
+    description: 'Zona tengah utara jalan tol, koridor Sindang Jaya & Inline Pump GSB',
+    nominalPressureBar: 4.50,
+    toleranceBar: 0.35,
+    color: '#65a30d',
+    activeNodesCount: 9,
+    pipeCount: 1240,
+    totalLengthKm: 98.4,
+    source: 'Batas PC Master',
   },
 ];
 
@@ -464,7 +479,12 @@ export const storage = {
   getPCAreas(): PCArea[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.PC_AREAS);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed: PCArea[] = JSON.parse(data);
+        if (parsed.length > 0 && !parsed.some((p) => p.region?.includes('Jakarta') || !p.pipeCount)) {
+          return parsed;
+        }
+      }
     } catch {
       // fallback
     }

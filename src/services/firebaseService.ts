@@ -20,83 +20,45 @@ import {
   NetworkLeakageRecord,
   PressureThresholdConfig,
 } from '../types/index.ts';
-import { storage, DEFAULT_REPAIR_MATERIALS, DEFAULT_PRESSURE_THRESHOLDS } from './storage.ts';
+import { storage, DEFAULT_PC_AREAS, DEFAULT_REPAIR_MATERIALS, DEFAULT_PRESSURE_THRESHOLDS } from './storage.ts';
 import { sanitizeAvatar } from '../constants/avatars.ts';
 
-// Initial baseline template for first-time database provisioning
-const INITIAL_PC_AREAS: PCArea[] = [
-  {
-    id: 'PC 1',
-    name: 'PC 1 - Sektor Utara (Transmisi Utama & Intake)',
-    region: 'Jakarta Pusat & Utara',
-    description: 'Jalur transmisi intake air baku dan pipa tekanan tinggi Pelabuhan Tanjung Priok',
-    nominalPressureBar: 5.10,
-    toleranceBar: 0.4,
-    color: '#006591',
-    activeNodesCount: 12,
-  },
-  {
-    id: 'PC 2',
-    name: 'PC 2 - Sektor Industri Barat (West Industrial Core)',
-    region: 'Jakarta Selatan Core',
-    description: 'Distribusi pipa koridor komersial Kuningan, Sudirman dan Rasuna Said',
-    nominalPressureBar: 4.88,
-    toleranceBar: 0.35,
-    color: '#0284c7',
-    activeNodesCount: 14,
-  },
-  {
-    id: 'PC 3',
-    name: 'PC 3 - Koridor Barat Ring-1 (Tomang & Slipi)',
-    region: 'Koridor Barat Ring-1',
-    description: 'Jalur pengatur tekanan PRV utama persimpangan Tomang ke Grogol',
-    nominalPressureBar: 3.92,
-    toleranceBar: 0.5,
-    color: '#eab308',
-    activeNodesCount: 8,
-  },
-  {
-    id: 'PC 4',
-    name: 'PC 4 - Koridor Timur Industri (Pulogadung & Cakung)',
-    region: 'Koridor Timur Industri',
-    description: 'Pipa transmisi baja 16-inch zona manufaktur dan logistik timur',
-    nominalPressureBar: 4.65,
-    toleranceBar: 0.3,
-    color: '#10b981',
-    activeNodesCount: 9,
-  },
-  {
-    id: 'PC 5',
-    name: 'PC 5 - Depo Pelabuhan & Terminal Marunda',
-    region: 'Depo Pelabuhan & Terminal',
-    description: 'Manifold penerimaan pesisir pantai utara & katup pelepas tekanan laut',
-    nominalPressureBar: 4.72,
-    toleranceBar: 0.25,
-    color: '#6366f1',
-    activeNodesCount: 5,
-  },
-];
+// Initial baseline template from Batas PC.shp for database provisioning
+const INITIAL_PC_AREAS: PCArea[] = DEFAULT_PC_AREAS;
 
 export const firebaseService = {
-  // Check and seed initial master PC Area categories into Firestore once if empty without ever overwriting user data
+  // Explicitly sync or insert PC Areas from Shapefile (Batas PC.shp) into Firestore Master Data
+  async syncPCAreasFromShapefile(): Promise<PCArea[]> {
+    const list: PCArea[] = DEFAULT_PC_AREAS;
+    for (const area of list) {
+      const areaDocRef = doc(db, 'pc_areas', area.id);
+      await setDoc(areaDocRef, area, { merge: true });
+    }
+    storage.savePCAreas(list);
+    return list;
+  },
+
+  // Check and seed initial master PC Area categories into Firestore once if empty or migrate if outdated
   async seedInitialDatabaseIfEmpty() {
     try {
-      // Sentinel check: if database has already been initialized, never overwrite user-entered data
-      const sentinelRef = doc(db, 'system_settings', 'database_initialized');
-      const sentinelSnap = await getDoc(sentinelRef);
-      if (sentinelSnap.exists() && sentinelSnap.data()?.seeded) {
-        return;
+      // Explicitly delete PC 6 from Firestore if it exists
+      try {
+        await deleteDoc(doc(db, 'pc_areas', 'PC 6'));
+      } catch (err) {
+        // ignore if not found
       }
 
-      // Check pc_areas collection; only seed if completely empty and never overwrite existing docs
+      // Check pc_areas collection; insert or migrate to 5 PC Areas
       const pcSnap = await getDocs(collection(db, 'pc_areas'));
-      if (pcSnap.empty) {
-        for (const area of INITIAL_PC_AREAS) {
+      if (pcSnap.empty || pcSnap.size < 5) {
+        for (const area of DEFAULT_PC_AREAS) {
           const areaDocRef = doc(db, 'pc_areas', area.id);
-          const existing = await getDoc(areaDocRef);
-          if (!existing.exists()) {
-            await setDoc(areaDocRef, area);
-          }
+          await setDoc(areaDocRef, area, { merge: true });
+        }
+      } else {
+        for (const area of DEFAULT_PC_AREAS) {
+          const areaDocRef = doc(db, 'pc_areas', area.id);
+          await setDoc(areaDocRef, area, { merge: true });
         }
       }
 
@@ -112,12 +74,14 @@ export const firebaseService = {
         }
       }
 
-      // Mark database as initialized so seeder never runs again
+      // Mark database as initialized
+      const sentinelRef = doc(db, 'system_settings', 'database_initialized');
       await setDoc(
         sentinelRef,
         {
           seeded: true,
           seededAt: new Date().toISOString(),
+          pcSource: 'Batas PC.shp (Kabupaten Tangerang)',
         },
         { merge: true }
       );
@@ -134,6 +98,11 @@ export const firebaseService = {
       (snapshot) => {
         const list: PCArea[] = [];
         snapshot.forEach((doc) => {
+          if (doc.id === 'PC 6') {
+            // Delete lingering PC 6 if present
+            deleteDoc(doc.ref).catch(() => {});
+            return;
+          }
           list.push(doc.data() as PCArea);
         });
 
@@ -296,6 +265,17 @@ export const firebaseService = {
     }
   },
 
+  // Update Inspection Record in Firestore (Manager Privilege)
+  async updateInspection(record: InspectionRecord): Promise<InspectionRecord> {
+    const path = `inspections/${record.id}`;
+    try {
+      await setDoc(doc(db, 'inspections', record.id), record, { merge: true });
+      return record;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+
   // Delete Inspection Record from Firestore
   async deleteInspection(id: string) {
     const path = `inspections/${id}`;
@@ -431,6 +411,17 @@ export const firebaseService = {
       return newRecord;
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
+    }
+  },
+
+  // Update Network Leakage Record in Firestore (Manager Privilege)
+  async updateLeakageRecord(record: NetworkLeakageRecord): Promise<NetworkLeakageRecord> {
+    const path = `leakage_records/${record.id}`;
+    try {
+      await setDoc(doc(db, 'leakage_records', record.id), record, { merge: true });
+      return record;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
     }
   },
 

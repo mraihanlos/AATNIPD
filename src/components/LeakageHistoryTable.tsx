@@ -5,24 +5,33 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Edit2,
+  Trash2,
+  ShieldCheck,
 } from 'lucide-react';
-import { NetworkLeakageRecord, PCArea, InspectionLocation } from '../types/index.ts';
+import { NetworkLeakageRecord, PCArea, InspectionLocation, UserProfile } from '../types/index.ts';
 import { LeakageDetailModal } from './LeakageDetailModal.tsx';
 
 interface LeakageHistoryTableProps {
   leakageRecords: NetworkLeakageRecord[];
   pcAreas: PCArea[];
   locations?: InspectionLocation[];
+  currentUser?: UserProfile | null;
   onExportCSV?: (records: NetworkLeakageRecord[]) => void;
   onViewDetail?: (record: NetworkLeakageRecord) => void;
+  onEditRecord?: (record: NetworkLeakageRecord) => void;
+  onDeleteRecord?: (id: string) => void;
 }
 
 export const LeakageHistoryTable: React.FC<LeakageHistoryTableProps> = ({
   leakageRecords = [],
   pcAreas = [],
   locations = [],
+  currentUser,
   onExportCSV,
   onViewDetail,
+  onEditRecord,
+  onDeleteRecord,
 }) => {
   const [periodTab, setPeriodTab] = useState<'day' | 'week' | 'month'>('day');
   const [selectedPC, setSelectedPC] = useState<string>('all');
@@ -34,7 +43,7 @@ export const LeakageHistoryTable: React.FC<LeakageHistoryTableProps> = ({
   // Helper to determine or match PC Area for a leakage record
   const getRecordPCArea = (record: NetworkLeakageRecord): string => {
     if (record.pcAreaId) return record.pcAreaId;
-    const match = record.leakLocationDetail.match(/PC\s*([1-5])/i);
+    const match = record.leakLocationDetail.match(/PC\s*([1-6])/i);
     if (match) return `PC ${match[1]}`;
 
     // Match closest location if coordinates exist
@@ -254,9 +263,17 @@ export const LeakageHistoryTable: React.FC<LeakageHistoryTableProps> = ({
         {/* Top Header of Table */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-slate-100">
           <div>
-            <h3 className="font-heading font-bold text-sm sm:text-base text-[#00162d]">
-              Log Riwayat Kebocoran Pipa
-            </h3>
+            <div className="flex items-center space-x-2">
+              <h3 className="font-heading font-bold text-sm sm:text-base text-[#00162d]">
+                Log Riwayat Kebocoran Pipa
+              </h3>
+              {currentUser?.role === 'manager' && (
+                <span className="inline-flex items-center space-x-1 bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs">
+                  <ShieldCheck className="w-3 h-3 text-amber-700" />
+                  <span>Akses Manager: Fitur Update Aktif</span>
+                </span>
+              )}
+            </div>
             <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
               Catatan berkala laporan kebocoran pipa, status tindakan perbaikan, dan material terpasang.
             </p>
@@ -376,11 +393,16 @@ export const LeakageHistoryTable: React.FC<LeakageHistoryTableProps> = ({
                 >
                   {/* Header: ID, PC Area, Status */}
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center space-x-1.5 min-w-0">
+                    <div className="flex items-center space-x-1.5 min-w-0 flex-wrap">
                       <span className="font-mono font-bold text-rose-900 text-xs">{item.id}</span>
                       <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold text-[10px]">
                         {area}
                       </span>
+                      {item.zona && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[9px]">
+                          {item.zona}
+                        </span>
+                      )}
                     </div>
                     <div>{getStatusBadge(item.status)}</div>
                   </div>
@@ -479,11 +501,18 @@ export const LeakageHistoryTable: React.FC<LeakageHistoryTableProps> = ({
                         <span className="text-slate-400 ml-1.5 font-mono">• {primaryTime} WIB</span>
                       </td>
 
-                      {/* PC Area Badge */}
+                      {/* PC Area & Zona Badge */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-bold text-[11px]">
-                          {area}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-bold text-[11px]">
+                            {area}
+                          </span>
+                          {item.zona && (
+                            <span className="inline-block px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px]">
+                              {item.zona}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Lokasi / Pipa */}
@@ -522,15 +551,27 @@ export const LeakageHistoryTable: React.FC<LeakageHistoryTableProps> = ({
                         </div>
                       </td>
 
-                      {/* Action: Lihat Detail */}
+                      {/* Action: Lihat Detail & Edit Manager */}
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        <button
-                          onClick={() => handleRowClick(item)}
-                          className="inline-flex items-center space-x-1 text-sky-700 hover:text-sky-900 font-semibold hover:underline cursor-pointer"
-                        >
-                          <span>Lihat Detail</span>
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-center space-x-2">
+                          <button
+                            onClick={() => handleRowClick(item)}
+                            className="inline-flex items-center space-x-1 text-sky-700 hover:text-sky-900 font-semibold hover:underline cursor-pointer"
+                          >
+                            <span>Lihat</span>
+                            <Eye className="w-3 h-3" />
+                          </button>
+                          {currentUser?.role === 'manager' && onEditRecord && (
+                            <button
+                              onClick={() => onEditRecord(item)}
+                              title="Edit Data Laporan (Manager)"
+                              className="inline-flex items-center space-x-1 text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded border border-amber-200 font-bold cursor-pointer transition-colors"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -580,7 +621,10 @@ export const LeakageHistoryTable: React.FC<LeakageHistoryTableProps> = ({
         <LeakageDetailModal
           record={activeModalRecord}
           pcAreas={pcAreas}
+          currentUser={currentUser}
           onClose={() => setActiveModalRecord(null)}
+          onEditRecord={onEditRecord}
+          onDeleteRecord={onDeleteRecord}
         />
       )}
     </>

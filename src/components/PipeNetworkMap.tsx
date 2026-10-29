@@ -20,13 +20,25 @@ import {
   User,
   X,
   Maximize2,
+  Map as MapIcon,
+  GitFork,
+  Activity,
+  Info,
 } from 'lucide-react';
+import { LEAKAGE_MONTH_COLORS, getRecordMonth } from '../constants/monthColors.ts';
+import {
+  PC_BOUNDARY_AREAS,
+  PRIMARY_PIPE_LINES,
+  PCBoundaryArea,
+} from '../constants/pcBoundaries.ts';
 
 export interface PipeNetworkMapProps {
   mode?: 'pressure' | 'leakage';
   inspections?: InspectionRecord[];
   locations?: InspectionLocation[];
   leakageRecords?: NetworkLeakageRecord[];
+  periodStart?: string;
+  periodEnd?: string;
   onOpenCADModal?: () => void;
   onSelectInspection?: (record: InspectionRecord) => void;
   onNavigateToLeakage?: () => void;
@@ -37,6 +49,8 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
   inspections = [],
   locations = [],
   leakageRecords = [],
+  periodStart,
+  periodEnd,
   onOpenCADModal,
   onSelectInspection,
   onNavigateToLeakage,
@@ -45,6 +59,12 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const [mapLayerType, setMapLayerType] = useState<'roadmap' | 'satellite'>('roadmap');
+
+  // Layer Visibility Controls
+  const [showPCBoundaries, setShowPCBoundaries] = useState<boolean>(true);
+  const [showPipeLines, setShowPipeLines] = useState<boolean>(true);
+  const [selectedPCFilter, setSelectedPCFilter] = useState<string | null>(null);
+  const [activePCAreaDetail, setActivePCAreaDetail] = useState<PCBoundaryArea | null>(null);
 
   // Popup state for Pressure Inspection mode
   const [activePressurePopup, setActivePressurePopup] = useState<{
@@ -61,6 +81,23 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
   // Popup state for Leakage Historical mode
   const [activeLeakagePopup, setActiveLeakagePopup] = useState<NetworkLeakageRecord | null>(null);
 
+  // Month filter state for Leakage Historical mode (null = all months, 1-12 = specific month)
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+
+  // Synchronize popup if selected month changes
+  useEffect(() => {
+    if (activeLeakagePopup && selectedMonth !== null) {
+      const popupMonth = getRecordMonth(
+        activeLeakagePopup.repairDate ||
+        activeLeakagePopup.inspectionDate ||
+        activeLeakagePopup.reportReceivedTime
+      );
+      if (popupMonth !== selectedMonth) {
+        setActiveLeakagePopup(null);
+      }
+    }
+  }, [selectedMonth, activeLeakagePopup]);
+
   // Fullscreen photo modal state
   const [enlargedPhotoUrl, setEnlargedPhotoUrl] = useState<string | null>(null);
 
@@ -69,24 +106,25 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
     if (!mapContainerRef.current) return;
 
     if (!mapInstanceRef.current) {
-      // Default center in Jakarta Metropolitan Area
+      // Default center in Kabupaten Tangerang (operational zone of PC 1 - PC 5)
       const map = L.map(mapContainerRef.current, {
-        center: [-6.2088, 106.8456],
-        zoom: 12,
+        center: [-6.175, 106.495],
+        zoom: 11,
         zoomControl: false,
         attributionControl: false,
       });
 
       L.control.zoom({ position: 'topright' }).addTo(map);
 
-      // Google Maps Vector/Roadmap Tile Layer
-      const gmapsLayer = L.tileLayer(
-        'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-        {
-          maxZoom: 20,
-          attribution: '&copy; Google Maps',
-        }
-      ).addTo(map);
+      // Google Maps Tile Layer
+      const initialTileUrl =
+        mapLayerType === 'satellite'
+          ? 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+          : 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+      const gmapsLayer = L.tileLayer(initialTileUrl, {
+        maxZoom: 20,
+        attribution: '&copy; Google Maps',
+      }).addTo(map);
 
       tileLayerRef.current = gmapsLayer;
       mapInstanceRef.current = map;
@@ -137,7 +175,7 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
       map.invalidateSize();
     }, 100);
 
-    // Clear existing markers and circles
+    // Clear existing markers, polylines, and polygons
     map.eachLayer((layer) => {
       if (layer instanceof L.Marker || layer instanceof L.Circle || layer instanceof L.Polyline) {
         map.removeLayer(layer);
@@ -145,6 +183,123 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
     });
 
     const bounds = L.latLngBounds([]);
+
+    // 1. Render Batas Wilayah PC Polygons & On-Map Badges (PC 1 to PC 5)
+    if (showPCBoundaries) {
+      const areaLabelNames: Record<string, string> = {
+        'PC 1': 'Sepatan',
+        'PC 2': 'Pasar Kemis',
+        'PC 3': 'Cikupa',
+        'PC 4': 'Jayanti & Balaraja',
+        'PC 5': 'Sindang Jaya',
+      };
+
+      PC_BOUNDARY_AREAS.forEach((area) => {
+        const isSelected = selectedPCFilter === area.id;
+        const poly = L.polygon(area.polygon, {
+          color: isSelected ? '#ffffff' : '#facc15', // yellow dashed border matching reference map
+          weight: isSelected ? 3.5 : 2.5,
+          dashArray: '6, 6',
+          fillColor: area.fillColor,
+          fillOpacity: isSelected ? 0.45 : 0.30,
+        }).addTo(map);
+
+        poly.bindTooltip(
+          `<div style="font-family: inherit; padding: 2px;">
+            <div style="font-weight: 800; color: ${area.color}; font-size: 11px;">${area.shortName}</div>
+            <div style="font-size: 10px; color: #334155;">${area.region}</div>
+            <div style="font-size: 9px; color: #64748b; margin-top: 2px;">${area.pipeCount} Segmen Pipa • ${area.totalLengthKm} km • Target: ${area.nominalPressureBar} Bar</div>
+          </div>`,
+          { sticky: true, opacity: 0.95 }
+        );
+
+        poly.on('click', () => {
+          setActivePCAreaDetail(area);
+          setActivePressurePopup(null);
+          setActiveLeakagePopup(null);
+        });
+
+        // Add prominent PC Badge & Name directly on the map
+        if (area.id === 'PC 4') {
+          // PC 4 has dual prominent region labels (Jayanti on west, Balaraja on east)
+          const pc4LabelIcon = L.divIcon({
+            className: 'pc-area-center-label',
+            html: `
+              <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none;">
+                <div style="background-color: #facc15; color: #0f172a; font-weight: 900; font-size: 11px; padding: 1.5px 7px; border-radius: 5px; border: 1.5px solid #000; box-shadow: 0 2px 5px rgba(0,0,0,0.5); font-family: ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.5px;">
+                  PC 4
+                </div>
+              </div>
+            `,
+            iconSize: [60, 26],
+            iconAnchor: [30, 13],
+          });
+          L.marker([-6.205, 106.425], { icon: pc4LabelIcon, interactive: false, zIndexOffset: 250 }).addTo(map);
+
+          // Jayanti label on West
+          const jayantiIcon = L.divIcon({
+            className: 'pc-sub-label',
+            html: `<div style="color: #ffffff; font-weight: 800; font-size: 11px; text-shadow: -1px -1px 0 #991b1b, 1px -1px 0 #991b1b, -1px 1px 0 #991b1b, 1px 1px 0 #991b1b, 0 2px 5px rgba(0,0,0,0.9); font-family: ui-sans-serif, system-ui, sans-serif; white-space: nowrap; pointer-events: none;">Jayanti</div>`,
+            iconSize: [60, 20],
+            iconAnchor: [30, 10],
+          });
+          L.marker([-6.205, 106.388], { icon: jayantiIcon, interactive: false, zIndexOffset: 250 }).addTo(map);
+
+          // Balaraja label on East
+          const balarajaIcon = L.divIcon({
+            className: 'pc-sub-label',
+            html: `<div style="color: #ffffff; font-weight: 800; font-size: 11px; text-shadow: -1px -1px 0 #991b1b, 1px -1px 0 #991b1b, -1px 1px 0 #991b1b, 1px 1px 0 #991b1b, 0 2px 5px rgba(0,0,0,0.9); font-family: ui-sans-serif, system-ui, sans-serif; white-space: nowrap; pointer-events: none;">Balaraja</div>`,
+            iconSize: [60, 20],
+            iconAnchor: [30, 10],
+          });
+          L.marker([-6.216, 106.456], { icon: balarajaIcon, interactive: false, zIndexOffset: 250 }).addTo(map);
+        } else {
+          // PC 1, 2, 3, 5
+          const areaLabelIcon = L.divIcon({
+            className: 'pc-area-center-label',
+            html: `
+              <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none;">
+                <div style="background-color: #facc15; color: #0f172a; font-weight: 900; font-size: 11px; padding: 1.5px 7px; border-radius: 5px; border: 1.5px solid #000; box-shadow: 0 2px 5px rgba(0,0,0,0.5); font-family: ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.5px;">
+                  ${area.id}
+                </div>
+                <div style="color: #ffffff; font-weight: 800; font-size: 11px; margin-top: 2px; text-shadow: -1px -1px 0 #991b1b, 1px -1px 0 #991b1b, -1px 1px 0 #991b1b, 1px 1px 0 #991b1b, 0 2px 5px rgba(0,0,0,0.9); font-family: ui-sans-serif, system-ui, sans-serif; white-space: nowrap;">
+                  ${areaLabelNames[area.id] || area.shortName}
+                </div>
+              </div>
+            `,
+            iconSize: [110, 40],
+            iconAnchor: [55, 20],
+          });
+          L.marker(area.center, { icon: areaLabelIcon, interactive: false, zIndexOffset: 250 }).addTo(map);
+        }
+
+        // Always include boundary vertices in map extent calculation
+        area.polygon.forEach((pt) => bounds.extend(pt));
+      });
+    }
+
+    // 6. Render Jaringan Pipa Distribusi Utama (Internal PC branches)
+    if (showPipeLines) {
+      PRIMARY_PIPE_LINES.forEach((pipe) => {
+        const pcArea = PC_BOUNDARY_AREAS.find((a) => a.id === pipe.pcId);
+        const lineColor = pcArea ? pcArea.color : '#0284c7';
+        const weight = pipe.diameter >= 500 ? 3.5 : pipe.diameter >= 300 ? 2.5 : 1.8;
+
+        const line = L.polyline(pipe.coordinates, {
+          color: lineColor,
+          weight,
+          opacity: 0.7,
+        }).addTo(map);
+
+        line.bindTooltip(
+          `<div style="font-family: inherit; font-size: 10px;">
+            <div style="font-weight: 800; color: ${lineColor};">Pipa ${pipe.networkType} Ø ${pipe.diameter} mm (${pipe.material})</div>
+            <div style="color: #475569;">${pipe.pcId} • ${pipe.lengthMeters} m ${pipe.yearLaid ? `(${pipe.yearLaid})` : ''}</div>
+          </div>`,
+          { sticky: true, opacity: 0.95 }
+        );
+      });
+    }
 
     if (mode === 'pressure') {
       // ----------------------------------------------------
@@ -241,7 +396,7 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
       });
 
       // 2. Render leakage records
-      const validRecords = leakageRecords.filter(
+      const allValidRecords = leakageRecords.filter(
         (r) =>
           typeof r.latitude === 'number' &&
           typeof r.longitude === 'number' &&
@@ -250,35 +405,50 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
           (r.latitude !== 0 || r.longitude !== 0)
       );
 
+      const validRecords = selectedMonth !== null
+        ? allValidRecords.filter(
+            (r) =>
+              getRecordMonth(r.repairDate || r.inspectionDate || r.reportReceivedTime) ===
+              selectedMonth
+          )
+        : allValidRecords;
+
       validRecords.forEach((record) => {
-        const leakColor = '#e11d48'; // Rose-600 for leak incident
+        const mNum = getRecordMonth(record.repairDate || record.inspectionDate || record.reportReceivedTime);
+        const mCfg = LEAKAGE_MONTH_COLORS[mNum] || LEAKAGE_MONTH_COLORS[1];
+        const leakColor = mCfg.color;
 
         const customIcon = L.divIcon({
           className: 'custom-leak-marker',
           html: `
             <div style="position: relative; display: flex; align-items: center; justify-content: center;">
-              <div style="position: absolute; width: 34px; height: 34px; border-radius: 50%; background-color: ${leakColor}; opacity: 0.3; animation: ping 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-              <div style="position: relative; min-width: 40px; height: 40px; padding: 0 5px; border-radius: 12px; background-color: #881337; border: 2px solid #fda4af; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(225,29,72,0.45); cursor: pointer;">
-                <span style="font-size: 8px; font-weight: 900; color: #ffe4e6; letter-spacing: 0.5px;">BOCOR</span>
-                <span style="font-size: 9px; font-weight: 800; color: #ffffff; font-family: monospace;">${record.pipeDiameter || 'PIPA'}</span>
+              <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background-color: ${leakColor}; opacity: 0.35; animation: ping 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+              <div style="position: relative; min-width: 44px; height: 42px; padding: 0 4px; border-radius: 12px; background-color: ${mCfg.bgDark}; border: 2px solid ${mCfg.border}; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 4px 16px ${leakColor}60; cursor: pointer;">
+                <span style="font-size: 8px; font-weight: 900; color: #ffffff; letter-spacing: 0.5px;">${mCfg.shortName}</span>
+                <span style="font-size: 9px; font-weight: 800; color: ${mCfg.border}; font-family: monospace;">${record.pipeDiameter || 'PIPA'}</span>
               </div>
             </div>
           `,
-          iconSize: [40, 40],
-          iconAnchor: [20, 20],
+          iconSize: [44, 42],
+          iconAnchor: [22, 21],
         });
 
         const marker = L.marker([record.latitude, record.longitude], { icon: customIcon }).addTo(map);
         bounds.extend([record.latitude, record.longitude]);
 
-        // Zone circle around the repaired leak point
+        // Zone circle around the repaired leak point using month color
         L.circle([record.latitude, record.longitude], {
-          radius: 60,
+          radius: 65,
           color: leakColor,
-          weight: 1.5,
+          weight: 2,
           fillColor: leakColor,
-          fillOpacity: 0.12,
+          fillOpacity: 0.15,
         }).addTo(map);
+
+        marker.bindTooltip(
+          `<strong>${record.leakLocationDetail || 'Titik Kebocoran'}</strong><br/><span style="color:${mCfg.color}; font-weight:bold;">Bulan ${mCfg.name}</span> • ${record.pipeDiameter || 'Pipa'}`,
+          { direction: 'top', offset: [0, -15] }
+        );
 
         marker.on('click', () => {
           setActiveLeakagePopup(record);
@@ -287,14 +457,24 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
       });
     }
 
-    // Auto fit map view to contain registered markers
-    if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+    // Auto fit map view to contain registered markers or selected PC area
+    if (selectedPCFilter) {
+      const area = PC_BOUNDARY_AREAS.find((a) => a.id === selectedPCFilter);
+      if (area) {
+        map.fitBounds(L.polygon(area.polygon).getBounds(), { padding: [30, 30] });
+        return;
+      }
     }
-  }, [mode, inspections, locations, leakageRecords]);
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [25, 25], maxZoom: 13 });
+    } else {
+      map.setView([-6.175, 106.495], 11);
+    }
+  }, [mode, inspections, locations, leakageRecords, selectedMonth, showPCBoundaries, showPipeLines, selectedPCFilter]);
 
   // Compute stats for display
-  const validLeakCount = leakageRecords.filter(
+  const allValidLeakCount = leakageRecords.filter(
     (r) =>
       typeof r.latitude === 'number' &&
       typeof r.longitude === 'number' &&
@@ -303,24 +483,42 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
       (r.latitude !== 0 || r.longitude !== 0)
   ).length;
 
+  const filteredLeakCount = selectedMonth !== null
+    ? leakageRecords.filter((r) => {
+        if (
+          typeof r.latitude !== 'number' ||
+          typeof r.longitude !== 'number' ||
+          isNaN(r.latitude) ||
+          isNaN(r.longitude) ||
+          (r.latitude === 0 && r.longitude === 0)
+        )
+          return false;
+        return (
+          getRecordMonth(r.repairDate || r.inspectionDate || r.reportReceivedTime) ===
+          selectedMonth
+        );
+      }).length
+    : allValidLeakCount;
+
   return (
-    <div className="relative bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden flex flex-col h-[400px] sm:h-[470px] w-full">
+    <div className="relative bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden flex flex-col h-[450px] sm:h-[510px] w-full">
       {/* Top Header of Map */}
-      <div className="p-3 sm:p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white z-10 shrink-0">
-        <div className="min-w-0">
-          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+      <div className="p-3 sm:p-3.5 border-b border-slate-100 bg-white z-10 shrink-0 flex flex-col gap-2">
+        {/* Row 1: Title & Map Layer Switcher */}
+        <div className="flex items-center justify-between gap-3 w-full">
+          <div className="flex items-center space-x-2 min-w-0 overflow-hidden">
             {mode === 'pressure' ? (
               <Navigation className="w-4 h-4 text-emerald-600 shrink-0" />
             ) : (
               <Wrench className="w-4 h-4 text-rose-600 shrink-0" />
             )}
-            <h3 className="font-heading font-bold text-xs sm:text-sm text-[#00162d] truncate">
+            <h3 className="font-heading font-bold text-xs sm:text-sm text-[#00162d] whitespace-nowrap">
               {mode === 'pressure'
                 ? 'Peta Pemantauan Tekanan Pipa'
                 : 'Peta Riwayat Kebocoran Pipa'}
             </h3>
             <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 border ${
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 border whitespace-nowrap hidden md:inline-flex ${
                 mode === 'pressure'
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                   : 'bg-rose-50 text-rose-700 border-rose-200'
@@ -329,72 +527,225 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
               {mode === 'pressure' ? 'Pressure Monitoring' : 'Leakage History'}
             </span>
           </div>
-          <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">
-            {mode === 'pressure'
-              ? 'Sebaran titik inspeksi & telemetri sensor tekanan pipa (Bar)'
-              : 'Sebaran histori insiden kebocoran & penanganan perbaikan'}
-          </p>
-        </div>
 
-        {/* Controls & Layer Switcher */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {/* Map Layer Switcher: Google Maps vs Satelit */}
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-xs font-bold">
+          {/* Map Controls: Batas PC, Jalur Pipa, and Google Maps vs Satelit */}
+          <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+            {/* Toggle Batas PC */}
             <button
-              onClick={() => setMapLayerType('roadmap')}
-              className={`px-2 py-1 rounded transition-all flex items-center gap-1 ${
-                mapLayerType === 'roadmap'
-                  ? 'bg-[#00162d] text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
+              type="button"
+              onClick={() => setShowPCBoundaries(!showPCBoundaries)}
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                showPCBoundaries
+                  ? 'bg-sky-50 text-sky-800 border-sky-300 shadow-2xs font-extrabold'
+                  : 'bg-white text-slate-400 border-slate-200 hover:text-slate-700'
               }`}
-              title="Google Maps Standar"
+              title="Tampilkan / Sembunyikan Batas Wilayah PC (5 Wilayah Kab. Tangerang)"
             >
-              <Navigation className="w-3 h-3 text-sky-400 shrink-0" />
-              <span className="text-[11px]">Maps</span>
+              <MapIcon className={`w-3 h-3 ${showPCBoundaries ? 'text-sky-600' : 'text-slate-400'}`} />
+              <span className="text-[11px] whitespace-nowrap">Batas PC</span>
+              <span
+                className={`text-[9px] px-1 py-0.2 rounded-full font-mono ${
+                  showPCBoundaries ? 'bg-sky-200 text-sky-900' : 'bg-slate-100 text-slate-400'
+                }`}
+              >
+                5
+              </span>
             </button>
+
+            {/* Toggle Jalur Pipa Distribusi */}
             <button
-              onClick={() => setMapLayerType('satellite')}
-              className={`px-2 py-1 rounded transition-all flex items-center gap-1 ${
-                mapLayerType === 'satellite'
-                  ? 'bg-[#00162d] text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
+              type="button"
+              onClick={() => setShowPipeLines(!showPipeLines)}
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                showPipeLines
+                  ? 'bg-teal-50 text-teal-800 border-teal-300 shadow-2xs font-extrabold'
+                  : 'bg-white text-slate-400 border-slate-200 hover:text-slate-700'
               }`}
-              title="Satelit Citra Udara"
+              title="Tampilkan / Sembunyikan Jaringan Pipa Distribusi Utama"
             >
-              <Layers className="w-3 h-3 text-emerald-400 shrink-0" />
-              <span className="text-[11px]">Satelit</span>
+              <GitFork className={`w-3 h-3 ${showPipeLines ? 'text-teal-600' : 'text-slate-400'}`} />
+              <span className="text-[11px] whitespace-nowrap">Jalur Pipa</span>
             </button>
+
+            {/* Map Layer Switcher: Google Maps vs Satelit */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-xs font-bold shrink-0 shadow-2xs">
+              <button
+                onClick={() => setMapLayerType('roadmap')}
+                className={`px-2 py-1 rounded transition-all flex items-center gap-1 cursor-pointer ${
+                  mapLayerType === 'roadmap'
+                    ? 'bg-[#00162d] text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Google Maps Standar"
+              >
+                <Navigation className="w-3 h-3 text-sky-400 shrink-0" />
+                <span className="text-[11px]">Maps</span>
+              </button>
+              <button
+                onClick={() => setMapLayerType('satellite')}
+                className={`px-2 py-1 rounded transition-all flex items-center gap-1 cursor-pointer ${
+                  mapLayerType === 'satellite'
+                    ? 'bg-[#00162d] text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Satelit Citra Udara"
+              >
+                <Layers className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span className="text-[11px]">Satelit</span>
+              </button>
+            </div>
           </div>
-
-          {/* Mode Legend */}
-          {mode === 'pressure' ? (
-            <div className="hidden md:flex items-center space-x-2 text-xs bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
-              <div className="flex items-center space-x-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span className="text-slate-700 text-[10px] font-medium">Normal</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <span className="w-2 h-2 rounded-full bg-sky-500"></span>
-                <span className="text-slate-700 text-[10px] font-medium">Peringatan</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                <span className="text-slate-700 text-[10px] font-medium">Kritis</span>
-              </div>
-            </div>
-          ) : (
-            <div className="hidden md:flex items-center space-x-2 text-xs bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
-              <div className="flex items-center space-x-1">
-                <span className="w-2 h-2 rounded-full bg-rose-600"></span>
-                <span className="text-slate-700 text-[10px] font-medium">Titik Kebocoran</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                <span className="text-slate-700 text-[10px] font-medium">Jaringan</span>
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Row 2: PC Filter & Status Legend (Pressure) OR Clickable Month Filter (Leakage) */}
+        {mode === 'pressure' ? (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 text-xs w-full">
+            {/* PC Quick Focus Pills */}
+            <div className="flex items-center gap-1 overflow-x-auto py-0.5 max-w-full">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap shrink-0 mr-0.5">
+                Wilayah PC:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedPCFilter(null)}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 transition-all cursor-pointer whitespace-nowrap border ${
+                  selectedPCFilter === null
+                    ? 'bg-[#00162d] text-white border-[#00162d] shadow-2xs'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                Semua
+              </button>
+              {PC_BOUNDARY_AREAS.map((area) => {
+                const isSelected = selectedPCFilter === area.id;
+                return (
+                  <button
+                    key={area.id}
+                    type="button"
+                    onClick={() => {
+                      const next = isSelected ? null : area.id;
+                      setSelectedPCFilter(next);
+                      if (next) {
+                        setActivePCAreaDetail(area);
+                      }
+                    }}
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 border transition-all cursor-pointer whitespace-nowrap ${
+                      isSelected
+                        ? 'text-white shadow-xs font-black'
+                        : 'bg-white hover:brightness-95 text-slate-700 border-slate-200'
+                    }`}
+                    style={{
+                      borderColor: isSelected ? area.color : undefined,
+                      backgroundColor: isSelected ? area.color : undefined,
+                    }}
+                    title={`${area.name} (${area.totalLengthKm} km pipa, ${area.pipeCount} segmen)`}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ backgroundColor: isSelected ? '#ffffff' : area.color }}
+                    />
+                    <span>{area.id}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Status Legend */}
+            <div className="flex items-center space-x-2 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200 shrink-0">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Status:</span>
+              <div className="flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span className="text-slate-700 text-[9px] font-medium">Normal</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+                <span className="text-slate-700 text-[9px] font-medium">Peringatan</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                <span className="text-slate-700 text-[9px] font-medium">Kritis</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full bg-slate-50/95 px-2.5 py-1 rounded-lg border border-slate-200 flex items-center gap-2 overflow-hidden">
+            <div className="flex items-center gap-1 shrink-0 text-slate-600">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">
+                Warna per Bulan:
+              </span>
+            </div>
+            <div className="flex items-center gap-1 overflow-x-auto py-0.5 flex-1 min-w-0">
+              {selectedMonth !== null && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonth(null)}
+                  className="px-2 py-0.5 rounded text-[10px] font-bold shrink-0 bg-slate-200 text-slate-700 hover:bg-slate-300 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                  title="Tampilkan Semua Bulan"
+                >
+                  Semua
+                </button>
+              )}
+              {Object.values(LEAKAGE_MONTH_COLORS).map((cfg) => {
+                const isSelected = selectedMonth === cfg.month;
+                const count = leakageRecords.filter((r) => {
+                  if (
+                    typeof r.latitude !== 'number' ||
+                    typeof r.longitude !== 'number' ||
+                    isNaN(r.latitude) ||
+                    isNaN(r.longitude) ||
+                    (r.latitude === 0 && r.longitude === 0)
+                  )
+                    return false;
+                  return (
+                    getRecordMonth(r.repairDate || r.inspectionDate || r.reportReceivedTime) ===
+                    cfg.month
+                  );
+                }).length;
+                return (
+                  <button
+                    key={cfg.month}
+                    type="button"
+                    onClick={() => setSelectedMonth(isSelected ? null : cfg.month)}
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 border transition-all cursor-pointer whitespace-nowrap ${
+                      isSelected
+                        ? 'ring-2 ring-offset-1 text-white shadow-xs font-black'
+                        : count > 0
+                        ? 'bg-white shadow-2xs font-extrabold hover:brightness-95'
+                        : 'bg-slate-100/70 border-slate-200 text-slate-400 hover:bg-slate-200/60'
+                    }`}
+                    style={{
+                      borderColor: isSelected ? cfg.color : count > 0 ? cfg.color : undefined,
+                      backgroundColor: isSelected ? cfg.color : undefined,
+                      color: isSelected ? '#ffffff' : count > 0 ? cfg.color : undefined,
+                      boxShadow: isSelected ? `0 0 0 2px ${cfg.color}40` : undefined,
+                    }}
+                    title={
+                      isSelected
+                        ? `Sedang memfilter: Bulan ${cfg.name} (${count} titik). Klik untuk kembali ke Semua Bulan.`
+                        : `Klik untuk filter data Bulan ${cfg.name} (${count} titik)`
+                    }
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ backgroundColor: isSelected ? '#ffffff' : cfg.color }}
+                    />
+                    <span>{cfg.shortName}</span>
+                    {count > 0 && (
+                      <span
+                        className={`px-1 rounded-full text-[9px] ${
+                          isSelected ? 'bg-black/20 text-white' : 'text-white'
+                        }`}
+                        style={{ backgroundColor: isSelected ? undefined : cfg.color }}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Map Canvas with Google Maps tiles */}
@@ -419,7 +770,7 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
         )}
 
         {/* Empty state for Leakage Mode */}
-        {mode === 'leakage' && validLeakCount === 0 && (
+        {mode === 'leakage' && allValidLeakCount === 0 && (
           <div className="absolute inset-0 z-20 bg-slate-900/30 backdrop-blur-[2px] flex items-center justify-center p-4">
             <div className="bg-white/95 rounded-2xl p-5 shadow-2xl border border-slate-200 max-w-xs text-center">
               <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-2.5">
@@ -438,6 +789,115 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
                 >
                   <Plus className="w-3.5 h-3.5 text-rose-400" />
                   <span>Input Laporan Kebocoran</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state when specific month has no data */}
+        {mode === 'leakage' && allValidLeakCount > 0 && selectedMonth !== null && filteredLeakCount === 0 && (
+          <div className="absolute inset-0 z-20 bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center p-4 pointer-events-none">
+            <div className="bg-white/95 rounded-2xl p-4 shadow-xl border border-slate-200 max-w-xs text-center pointer-events-auto">
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center mx-auto mb-2 text-white font-black text-xs"
+                style={{ backgroundColor: LEAKAGE_MONTH_COLORS[selectedMonth]?.color || '#ef4444' }}
+              >
+                {LEAKAGE_MONTH_COLORS[selectedMonth]?.shortName}
+              </div>
+              <h4 className="font-heading font-bold text-xs text-[#00162d] mb-1">
+                Tidak Ada Titik Kebocoran di Bulan {LEAKAGE_MONTH_COLORS[selectedMonth]?.name}
+              </h4>
+              <p className="text-[11px] text-slate-500 mb-2.5">
+                Tidak ditemukan catatan kebocoran pada bulan yang dipilih dalam rentang periode ini.
+              </p>
+              <button
+                type="button"
+                onClick={() => setSelectedMonth(null)}
+                className="py-1 px-3 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-[11px] font-semibold transition-colors cursor-pointer"
+              >
+                Tampilkan Semua Bulan ({allValidLeakCount} Titik)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Interactive Detail Card for Clicked PC Area Boundary */}
+        {activePCAreaDetail && (
+          <div className="absolute top-3 left-3 right-3 sm:right-auto z-20 bg-white/95 backdrop-blur-md p-3.5 rounded-xl shadow-2xl border border-slate-200 sm:w-80 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: activePCAreaDetail.color }}
+                  />
+                  <span
+                    className="text-[10px] font-black px-1.5 py-0.5 rounded text-white"
+                    style={{ backgroundColor: activePCAreaDetail.color }}
+                  >
+                    {activePCAreaDetail.id}
+                  </span>
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+                    Batas Wilayah Operasional
+                  </span>
+                </div>
+                <h4 className="font-heading font-bold text-xs sm:text-sm text-[#00162d] mt-1 line-clamp-1">
+                  {activePCAreaDetail.name}
+                </h4>
+                <p className="text-[11px] text-slate-500 line-clamp-1">
+                  {activePCAreaDetail.region}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActivePCAreaDetail(null)}
+                className="text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 mb-2.5 leading-relaxed">
+              {activePCAreaDetail.description}
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 text-center mb-3">
+              <div className="bg-sky-50/70 p-2 rounded-lg border border-sky-100">
+                <p className="text-[9px] font-bold text-sky-700 uppercase tracking-wider">Total Jaringan</p>
+                <p className="text-xs sm:text-sm font-bold text-sky-950 font-telemetry">{activePCAreaDetail.totalLengthKm} km</p>
+                <p className="text-[9px] text-sky-600">{activePCAreaDetail.pipeCount} segmen pipa</p>
+              </div>
+              <div className="bg-emerald-50/70 p-2 rounded-lg border border-emerald-100">
+                <p className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider">Target Tekanan</p>
+                <p className="text-xs sm:text-sm font-bold text-emerald-950 font-telemetry">{activePCAreaDetail.nominalPressureBar.toFixed(2)} Bar</p>
+                <p className="text-[9px] text-emerald-600">±{activePCAreaDetail.toleranceBar} Bar</p>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPCFilter(activePCAreaDetail.id);
+                  const map = mapInstanceRef.current;
+                  if (map) {
+                    map.fitBounds(L.polygon(activePCAreaDetail.polygon).getBounds(), { padding: [30, 30] });
+                  }
+                }}
+                className="flex-1 py-1.5 px-2 bg-[#00162d] hover:bg-[#00284f] text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+              >
+                <MapPin className="w-3.5 h-3.5 text-sky-400" />
+                <span>Fokus Area Ini</span>
+              </button>
+              {selectedPCFilter === activePCAreaDetail.id && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedPCFilter(null)}
+                  className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                  title="Tampilkan Semua PC"
+                >
+                  Reset
                 </button>
               )}
             </div>
@@ -510,13 +970,21 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
         )}
 
         {/* Interactive Popup for Leakage Mode */}
-        {mode === 'leakage' && activeLeakagePopup && (
-          <div className="absolute bottom-3 left-3 right-3 sm:right-auto z-20 bg-white/95 backdrop-blur-md p-3.5 rounded-xl shadow-xl border border-rose-200 sm:w-80 max-h-[85%] overflow-y-auto animate-in fade-in slide-in-from-bottom-2">
+        {mode === 'leakage' && activeLeakagePopup && (() => {
+          const mNum = getRecordMonth(activeLeakagePopup.repairDate || activeLeakagePopup.inspectionDate || activeLeakagePopup.reportReceivedTime);
+          const mCfg = LEAKAGE_MONTH_COLORS[mNum] || LEAKAGE_MONTH_COLORS[1];
+          return (
+          <div className="absolute bottom-3 left-3 right-3 sm:right-auto z-20 bg-white/95 backdrop-blur-md p-3.5 rounded-xl shadow-xl border border-slate-200 sm:w-80 max-h-[85%] overflow-y-auto animate-in fade-in slide-in-from-bottom-2">
             <div className="flex items-start justify-between gap-2 mb-2">
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0"></span>
-                  <span className="text-[10px] font-mono font-bold text-rose-700">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span
+                    className="text-[10px] font-bold px-2 py-0.5 rounded text-white shadow-2xs"
+                    style={{ backgroundColor: mCfg.color }}
+                  >
+                    Bulan {mCfg.name}
+                  </span>
+                  <span className="text-[10px] font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
                     {activeLeakagePopup.id}
                   </span>
                   <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800">
@@ -639,27 +1107,54 @@ export const PipeNetworkMap: React.FC<PipeNetworkMapProps> = ({
                 href={`https://www.google.com/maps/search/?api=1&query=${activeLeakagePopup.latitude},${activeLeakagePopup.longitude}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-1.5 px-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                className="w-full py-1.5 px-2 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                style={{ backgroundColor: mCfg.color }}
               >
                 <Navigation className="w-3 h-3 text-white" />
                 <span>Navigasi Google Maps ↗</span>
               </a>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
 
-      {/* Map Footer Bar with dynamic statistics */}
+      {/* Map Footer Bar with dynamic statistics & active period */}
       <div className="p-2 sm:p-2.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-xs text-slate-600 z-10 shrink-0">
-        <span className="text-slate-600 font-medium truncate">
-          {mode === 'pressure'
-            ? locations.length > 0
-              ? `Menampilkan ${locations.length} titik lokasi inspeksi terdaftar.`
-              : 'Belum ada titik inspeksi terdaftar.'
-            : validLeakCount > 0
-            ? `Menampilkan ${validLeakCount} riwayat titik perbaikan kebocoran.`
-            : 'Belum ada data koordinat titik kebocoran.'}
-        </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-slate-600 font-medium truncate">
+            {mode === 'pressure'
+              ? locations.length > 0
+                ? `Menampilkan ${locations.length} titik lokasi inspeksi terdaftar.`
+                : 'Belum ada titik inspeksi terdaftar.'
+              : selectedMonth !== null
+              ? `Menampilkan ${filteredLeakCount} dari ${allValidLeakCount} titik kebocoran (${LEAKAGE_MONTH_COLORS[selectedMonth]?.name}).`
+              : allValidLeakCount > 0
+              ? `Menampilkan ${allValidLeakCount} riwayat titik perbaikan kebocoran.`
+              : 'Belum ada data koordinat titik kebocoran.'}
+          </span>
+          {mode === 'leakage' && selectedMonth !== null && (
+            <span
+              className="text-[10px] font-bold text-white px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1.5 shadow-2xs"
+              style={{ backgroundColor: LEAKAGE_MONTH_COLORS[selectedMonth]?.color || '#ef4444' }}
+            >
+              <span>Filter: Bulan {LEAKAGE_MONTH_COLORS[selectedMonth]?.name}</span>
+              <button
+                type="button"
+                onClick={() => setSelectedMonth(null)}
+                className="hover:opacity-75 font-black text-xs cursor-pointer"
+                title="Hapus Filter Bulan"
+              >
+                ×
+              </button>
+            </span>
+          )}
+          {(periodStart || periodEnd) && (
+            <span className="text-[10px] font-bold text-sky-800 bg-sky-100 px-2 py-0.5 rounded-full shrink-0">
+              Periode: {periodStart || 'Awal'} s/d {periodEnd || 'Kini'}
+            </span>
+          )}
+        </div>
 
         {mode === 'pressure' ? (
           onOpenCADModal && (

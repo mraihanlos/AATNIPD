@@ -44,6 +44,7 @@ interface MasterDataViewProps {
   onAddPCArea?: (area: PCArea) => Promise<void>;
   onUpdatePCArea?: (area: PCArea) => Promise<void>;
   onDeletePCArea?: (id: string) => Promise<void>;
+  onSyncPCAreasFromShapefile?: () => Promise<void>;
   onAddMaterial?: (mat: Omit<RepairMaterial, 'id' | 'createdAt'>) => Promise<void>;
   onUpdateMaterial?: (mat: RepairMaterial) => Promise<void>;
   onDeleteMaterial?: (id: string) => Promise<void>;
@@ -61,6 +62,7 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
   onAddPCArea,
   onUpdatePCArea,
   onDeletePCArea,
+  onSyncPCAreasFromShapefile,
   onAddMaterial,
   onUpdateMaterial,
   onDeleteMaterial,
@@ -417,13 +419,31 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
     showToast(`Menampilkan titik lokasi yang berinduk pada ${pcId}`, 'info');
   };
 
+  // State & Handler for Syncing PC Areas from Shapefile (Batas PC.shp)
+  const [isSyncingSHP, setIsSyncingSHP] = useState<boolean>(false);
+
+  const handleSyncFromShapefile = async () => {
+    try {
+      setIsSyncingSHP(true);
+      if (onSyncPCAreasFromShapefile) {
+        await onSyncPCAreasFromShapefile();
+      }
+      showToast('5 Wilayah PC dari file SHP (Kabupaten Tangerang) berhasil dimasukkan ke Master Data!', 'success');
+    } catch (err) {
+      console.error('Error syncing PC areas from shapefile:', err);
+      showToast('Gagal menyinkronkan data PC dari file SHP.', 'warning');
+    } finally {
+      setIsSyncingSHP(false);
+    }
+  };
+
   // Open modal to add or edit PC Area
   const handleOpenAddPCModal = () => {
     setEditingPCArea(null);
     const nextNumber = pcAreas.length + 1;
     setPcModalId(`PC ${nextNumber}`);
     setPcModalName(`PC ${nextNumber} - Zona Baru Sektor`);
-    setPcModalRegion('Jakarta & Sekitarnya');
+    setPcModalRegion('Kabupaten Tangerang');
     setPcModalDescription('Area operasional jaringan transmisi dan distribusi sekunder');
     setPcModalNominalBar(4.85);
     setPcModalToleranceBar(0.35);
@@ -742,14 +762,26 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
         {/* Quick action button matching the active tab */}
         <div className="shrink-0 flex justify-end w-full sm:w-auto">
           {activeTab === 'pc-table' ? (
-            <button
-              type="button"
-              onClick={handleOpenAddPCModal}
-              className="w-full sm:w-auto justify-center mb-1 py-2.5 px-3.5 bg-[#00162d] hover:bg-[#00274e] text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors shadow-2xs cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5 text-sky-400" />
-              <span>Tambah Area / Zona (PC)</span>
-            </button>
+            <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleSyncFromShapefile}
+                disabled={isSyncingSHP}
+                className="w-full sm:w-auto justify-center mb-1 py-2.5 px-3.5 bg-sky-700 hover:bg-sky-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors shadow-2xs cursor-pointer"
+                title="Muat & sinkronkan 5 Area PC (Batas PC Kab. Tangerang) dari file SHP ke Master Data"
+              >
+                <Layers className="w-3.5 h-3.5 text-sky-200" />
+                <span>{isSyncingSHP ? 'Menyinkronkan SHP...' : 'Sinkronkan dari File SHP'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenAddPCModal}
+                className="w-full sm:w-auto justify-center mb-1 py-2.5 px-3.5 bg-[#00162d] hover:bg-[#00274e] text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors shadow-2xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 text-sky-400" />
+                <span>Tambah Area / Zona (PC)</span>
+              </button>
+            </div>
           ) : activeTab === 'location-table' ? (
             <button
               type="button"
@@ -918,6 +950,19 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
                         </div>
                       </div>
 
+                      {/* SHP Network Coverage if available */}
+                      {area.totalLengthKm ? (
+                        <div className="flex items-center justify-between text-xs bg-teal-50/70 p-2 rounded-lg border border-teal-100">
+                          <span className="text-[10px] text-teal-800 font-bold uppercase flex items-center gap-1">
+                            <Layers className="w-3 h-3 text-teal-600" />
+                            <span>Jaringan SHP:</span>
+                          </span>
+                          <span className="font-bold text-teal-950 font-telemetry text-xs">
+                            {area.totalLengthKm} km • {area.pipeCount?.toLocaleString('id-ID')} segmen pipa
+                          </span>
+                        </div>
+                      ) : null}
+
                       {/* Description */}
                       {area.description && (
                         <p className="text-[11px] text-slate-500 leading-relaxed italic bg-slate-50/60 p-2 rounded-lg">
@@ -939,6 +984,7 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
                     <th className="py-3 px-3.5">Nama Area / Zona (Induk)</th>
                     <th className="py-3 px-3.5">Wilayah & Sektor</th>
                     <th className="py-3 px-3.5">Standar Tekanan Desain</th>
+                    <th className="py-3 px-3.5">Cakupan Jaringan (SHP)</th>
                     <th className="py-3 px-3.5 text-center">Titik Lokasi Berinduk</th>
                     <th className="py-3 px-3.5">Keterangan Operasional</th>
                     <th className="py-3 px-3.5 text-center">Aksi</th>
@@ -947,7 +993,7 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {currentPCRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-400">
+                      <td colSpan={8} className="py-12 text-center text-slate-400">
                         Tidak ada data Area / Zona (PC) yang sesuai pencarian.
                       </td>
                     </tr>
@@ -996,6 +1042,23 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
                             <span className="text-[10px] text-slate-500 font-mono block">
                               Tol: ±{area.toleranceBar.toFixed(2)} Bar
                             </span>
+                          </td>
+
+                          {/* Cakupan Jaringan Pipa SHP */}
+                          <td className="py-3.5 px-3.5 whitespace-nowrap">
+                            {area.totalLengthKm ? (
+                              <div>
+                                <div className="flex items-center space-x-1.5 font-telemetry">
+                                  <span className="font-bold text-teal-900 text-sm">{area.totalLengthKm}</span>
+                                  <span className="text-xs text-teal-700 font-sans font-semibold">km</span>
+                                </div>
+                                <span className="text-[10px] text-slate-500 font-mono block">
+                                  {area.pipeCount?.toLocaleString('id-ID')} segmen pipa
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-xs italic">-</span>
+                            )}
                           </td>
 
                           {/* Titik Lokasi Berinduk */}

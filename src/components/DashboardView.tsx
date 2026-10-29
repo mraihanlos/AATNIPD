@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Download,
   Plus,
@@ -7,6 +7,9 @@ import {
   AlertTriangle,
   TrendingUp,
   Wrench,
+  Calendar,
+  RotateCcw,
+  Filter,
 } from 'lucide-react';
 import {
   InspectionRecord,
@@ -15,6 +18,7 @@ import {
   UserProfile,
   NetworkLeakageRecord,
 } from '../types/index.ts';
+import { normalizeToISODate } from '../constants/monthColors.ts';
 import { PipeNetworkMap } from './PipeNetworkMap.tsx';
 import { QualityDistributionCard } from './QualityDistributionCard.tsx';
 import { InspectionHistoryTable } from './InspectionHistoryTable.tsx';
@@ -32,6 +36,10 @@ interface DashboardViewProps {
   onViewDetail: (record: InspectionRecord) => void;
   onOpenCADModal: () => void;
   onShowCalibrationSchedule: () => void;
+  onEditLeakageRecord?: (record: NetworkLeakageRecord) => void;
+  onDeleteLeakageRecord?: (id: string) => void;
+  onUpdateInspection?: (record: InspectionRecord) => Promise<void>;
+  onDeleteInspection?: (id: string) => Promise<void>;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -46,6 +54,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onViewDetail,
   onOpenCADModal,
   onShowCalibrationSchedule,
+  onEditLeakageRecord,
+  onDeleteLeakageRecord,
+  onUpdateInspection,
+  onDeleteInspection,
 }) => {
   // Dynamically compute KPI summary
   const avgPressure =
@@ -61,6 +73,55 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const currentDayPadded = String(now.getDate()).padStart(2, '0');
   const todayISO = `${currentYearStr}-${currentMonthPadded}-${currentDayPadded}`;
   const currentYearMonthISO = `${currentYearStr}-${currentMonthPadded}`;
+
+  // Period filter state for the Dual Monitoring Maps section
+  const [mapPeriodStart, setMapPeriodStart] = useState<string>('');
+  const [mapPeriodEnd, setMapPeriodEnd] = useState<string>('');
+
+  const handlePresetToday = () => {
+    setMapPeriodStart(todayISO);
+    setMapPeriodEnd(todayISO);
+  };
+
+  const handlePreset7Days = () => {
+    const d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const startStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    setMapPeriodStart(startStr);
+    setMapPeriodEnd(todayISO);
+  };
+
+  const handlePresetThisMonth = () => {
+    const lastDay = new Date(currentYear, currentMonth, 0).getDate();
+    setMapPeriodStart(`${currentYearStr}-${currentMonthPadded}-01`);
+    setMapPeriodEnd(`${currentYearStr}-${currentMonthPadded}-${String(lastDay).padStart(2, '0')}`);
+  };
+
+  const handlePresetThisYear = () => {
+    setMapPeriodStart(`${currentYearStr}-01-01`);
+    setMapPeriodEnd(`${currentYearStr}-12-31`);
+  };
+
+  // Filter inspections for the Pressure Map
+  const filteredInspectionsForMap = useMemo(() => {
+    return inspections.filter((insp) => {
+      const d = normalizeToISODate(insp.date);
+      if (!d) return true;
+      if (mapPeriodStart && d < mapPeriodStart) return false;
+      if (mapPeriodEnd && d > mapPeriodEnd) return false;
+      return true;
+    });
+  }, [inspections, mapPeriodStart, mapPeriodEnd]);
+
+  // Filter leakage records for the Leakage Map
+  const filteredLeakageForMap = useMemo(() => {
+    return leakageRecords.filter((rec) => {
+      const d = normalizeToISODate(rec.repairDate || rec.inspectionDate || rec.reportReceivedTime);
+      if (!d) return true;
+      if (mapPeriodStart && d < mapPeriodStart) return false;
+      if (mapPeriodEnd && d > mapPeriodEnd) return false;
+      return true;
+    });
+  }, [leakageRecords, mapPeriodStart, mapPeriodEnd]);
 
   // Month names in Indonesian
   const monthNamesID = [
@@ -257,14 +318,144 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
+      {/* Period Filter for Dual Monitoring Maps Section */}
+      <div className="bg-white rounded-xl border border-slate-200 p-3.5 sm:p-4 shadow-2xs space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          {/* Title & Badge */}
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center shrink-0 border border-sky-100">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2 flex-wrap">
+                <h3 className="font-heading font-bold text-sm text-[#00162d]">
+                  Filter Periode Waktu Peta Pemantauan
+                </h3>
+                {mapPeriodStart || mapPeriodEnd ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    Filter Aktif: {mapPeriodStart || 'Awal'} s/d {mapPeriodEnd || 'Kini'}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                    Semua Periode Data
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Saring data telemetri tekanan pipa dan histori sebaran titik kebocoran pada kedua peta secara sinkron.
+              </p>
+            </div>
+          </div>
+
+          {/* Date Inputs: Dari (From) & Sampai (To) */}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus-within:border-sky-500 focus-within:bg-white transition-all">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Dari:</span>
+              <input
+                type="date"
+                value={mapPeriodStart}
+                onChange={(e) => setMapPeriodStart(e.target.value)}
+                aria-label="Filter Tanggal Mulai"
+                className="text-xs font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+              />
+            </div>
+
+            <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus-within:border-sky-500 focus-within:bg-white transition-all">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Sampai:</span>
+              <input
+                type="date"
+                value={mapPeriodEnd}
+                onChange={(e) => setMapPeriodEnd(e.target.value)}
+                aria-label="Filter Tanggal Selesai"
+                className="text-xs font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+              />
+            </div>
+
+            {(mapPeriodStart || mapPeriodEnd) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMapPeriodStart('');
+                  setMapPeriodEnd('');
+                }}
+                className="py-1.5 px-2.5 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                title="Hapus Filter Periode"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Presets Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-100 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-slate-400 font-medium mr-1">Preset Cepat:</span>
+            <button
+              type="button"
+              onClick={() => {
+                setMapPeriodStart('');
+                setMapPeriodEnd('');
+              }}
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
+                !mapPeriodStart && !mapPeriodEnd
+                  ? 'bg-[#00162d] text-white shadow-2xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Semua Data
+            </button>
+            <button
+              type="button"
+              onClick={handlePresetToday}
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
+                mapPeriodStart === todayISO && mapPeriodEnd === todayISO
+                  ? 'bg-[#00162d] text-white shadow-2xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Hari Ini
+            </button>
+            <button
+              type="button"
+              onClick={handlePreset7Days}
+              className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+            >
+              7 Hari Terakhir
+            </button>
+            <button
+              type="button"
+              onClick={handlePresetThisMonth}
+              className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+            >
+              Bulan Ini
+            </button>
+            <button
+              type="button"
+              onClick={handlePresetThisYear}
+              className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+            >
+              Tahun Ini ({currentYear})
+            </button>
+          </div>
+
+          <div className="text-[11px] text-slate-500 font-medium">
+            Hasil Filter: <strong className="text-sky-900 font-bold">{filteredInspectionsForMap.length}</strong> Inspeksi Tekanan • <strong className="text-rose-700 font-bold">{filteredLeakageForMap.length}</strong> Titik Kebocoran
+          </div>
+        </div>
+      </div>
+
       {/* Mid Section: Dual Monitoring Maps (Left: Pressure Inspection, Right: Leakage History) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
         {/* Left Column: Pressure Inspection Map */}
         <div className="w-full min-w-0">
           <PipeNetworkMap
             mode="pressure"
-            inspections={inspections}
+            inspections={filteredInspectionsForMap}
             locations={locations}
+            periodStart={mapPeriodStart}
+            periodEnd={mapPeriodEnd}
             onSelectInspection={onViewDetail}
           />
         </div>
@@ -273,8 +464,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="w-full min-w-0">
           <PipeNetworkMap
             mode="leakage"
-            leakageRecords={leakageRecords}
+            leakageRecords={filteredLeakageForMap}
             locations={locations}
+            periodStart={mapPeriodStart}
+            periodEnd={mapPeriodEnd}
             onNavigateToLeakage={onNavigateToLeakage}
           />
         </div>
@@ -301,6 +494,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         leakageRecords={leakageRecords}
         pcAreas={pcAreas}
         locations={locations}
+        currentUser={currentUser}
+        onEditRecord={onEditLeakageRecord}
+        onDeleteRecord={onDeleteLeakageRecord}
       />
     </div>
   );

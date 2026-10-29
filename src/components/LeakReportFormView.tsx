@@ -62,36 +62,47 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
     return `${hours}:${mins}`;
   };
 
+  const DRAFT_KEY = 'aat_leak_report_form_draft';
+  const getInitialDraft = () => {
+    try {
+      const saved = sessionStorage.getItem(DRAFT_KEY) || localStorage.getItem(DRAFT_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  };
+  const [initialDraft] = useState(() => getInitialDraft());
+
   // Section 1: General Info
   const [department] = useState('Distribusi (Distribution Dept)');
-  const [zoneArea, setZoneArea] = useState('');
-  const [workStatus, setWorkStatus] = useState<'KLBC' | 'KPPR'>('KLBC');
+  const [zoneArea, setZoneArea] = useState(initialDraft?.zoneArea || '');
+  const [workStatus, setWorkStatus] = useState<'KLBC' | 'KPPR'>(initialDraft?.workStatus || 'KLBC');
 
   // Section 2: Schedule
-  const [inspectionDate, setInspectionDate] = useState(todayDate);
-  const [repairDate, setRepairDate] = useState(todayDate);
-  const [repairTimeStart, setRepairTimeStart] = useState('');
-  const [repairTimeEnd, setRepairTimeEnd] = useState('');
-  const [shutOffTimeStart, setShutOffTimeStart] = useState('');
-  const [shutOffTimeEnd, setShutOffTimeEnd] = useState('');
+  const [inspectionDate, setInspectionDate] = useState(initialDraft?.inspectionDate || todayDate);
+  const [repairDate, setRepairDate] = useState(initialDraft?.repairDate || todayDate);
+  const [repairTimeStart, setRepairTimeStart] = useState(initialDraft?.repairTimeStart || '');
+  const [repairTimeEnd, setRepairTimeEnd] = useState(initialDraft?.repairTimeEnd || '');
+  const [shutOffTimeStart, setShutOffTimeStart] = useState(initialDraft?.shutOffTimeStart || '');
+  const [shutOffTimeEnd, setShutOffTimeEnd] = useState(initialDraft?.shutOffTimeEnd || '');
 
   // Section 3: Administration & Location
-  const [reporterName, setReporterName] = useState('');
-  const [reportReceivedAt, setReportReceivedAt] = useState('');
-  const [leakLocationDetail, setLeakLocationDetail] = useState('');
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
+  const [reporterName, setReporterName] = useState(initialDraft?.reporterName || '');
+  const [reportReceivedAt, setReportReceivedAt] = useState(initialDraft?.reportReceivedAt || '');
+  const [leakLocationDetail, setLeakLocationDetail] = useState(initialDraft?.leakLocationDetail || '');
+  const [latitude, setLatitude] = useState<number | null>(initialDraft?.latitude ?? null);
+  const [longitude, setLongitude] = useState<number | null>(initialDraft?.longitude ?? null);
   const [isSyncingGPS, setIsSyncingGPS] = useState(false);
   const [gpsSyncMessage, setGpsSyncMessage] = useState<string | null>(null);
-  const [initialReportNotes, setInitialReportNotes] = useState('');
+  const [initialReportNotes, setInitialReportNotes] = useState(initialDraft?.initialReportNotes || '');
 
   // Section 4: Photos
-  const [photoBeforeUrl, setPhotoBeforeUrl] = useState<string>('');
-  const [photoBeforeTag, setPhotoBeforeTag] = useState<string>('');
-  const [photoBeforeTimestamp, setPhotoBeforeTimestamp] = useState<string>('');
-  const [photoAfterUrl, setPhotoAfterUrl] = useState<string>('');
-  const [photoAfterTag, setPhotoAfterTag] = useState<string>('');
-  const [photoAfterTimestamp, setPhotoAfterTimestamp] = useState<string>('');
+  const [photoBeforeUrl, setPhotoBeforeUrl] = useState<string>(initialDraft?.photoBeforeUrl || '');
+  const [photoBeforeTag, setPhotoBeforeTag] = useState<string>(initialDraft?.photoBeforeTag || '');
+  const [photoBeforeTimestamp, setPhotoBeforeTimestamp] = useState<string>(initialDraft?.photoBeforeTimestamp || '');
+  const [photoAfterUrl, setPhotoAfterUrl] = useState<string>(initialDraft?.photoAfterUrl || '');
+  const [photoAfterTag, setPhotoAfterTag] = useState<string>(initialDraft?.photoAfterTag || '');
+  const [photoAfterTimestamp, setPhotoAfterTimestamp] = useState<string>(initialDraft?.photoAfterTimestamp || '');
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
 
   // Native file inputs
@@ -99,21 +110,91 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
   const photoAfterInputRef = useRef<HTMLInputElement>(null);
 
   // Section 5: Inspection Results & Repair Actions
-  const [physicalInspectionResult, setPhysicalInspectionResult] = useState('');
-  const [physicalInspectionNotes, setPhysicalInspectionNotes] = useState('');
-  const [repairActionTaken, setRepairActionTaken] = useState('');
-  const [repairActionNotes, setRepairActionNotes] = useState('');
+  const [physicalInspectionResult, setPhysicalInspectionResult] = useState(initialDraft?.physicalInspectionResult || '');
+  const [physicalInspectionNotes, setPhysicalInspectionNotes] = useState(initialDraft?.physicalInspectionNotes || '');
+  const [repairActionTaken, setRepairActionTaken] = useState(initialDraft?.repairActionTaken || '');
+  const [repairActionNotes, setRepairActionNotes] = useState(initialDraft?.repairActionNotes || '');
 
   // Section 6: Materials Used
-  const [selectedMaterialId, setSelectedMaterialId] = useState<string>('');
-  const [materialSpecInput, setMaterialSpecInput] = useState('');
-  const [materialQtyInput, setMaterialQtyInput] = useState<number | ''>('');
-  const [materialsList, setMaterialsList] = useState<LeakReportMaterial[]>([]);
+  const [selectedMaterialId, setSelectedMaterialId] = useState<string>(initialDraft?.selectedMaterialId || '');
+  const [materialSpecInput, setMaterialSpecInput] = useState(initialDraft?.materialSpecInput || '');
+  const [materialQtyInput, setMaterialQtyInput] = useState<number | ''>(initialDraft?.materialQtyInput ?? '');
+  const [materialsList, setMaterialsList] = useState<LeakReportMaterial[]>(initialDraft?.materialsList || []);
 
   // Form Submission
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Persist draft to storage
+  useEffect(() => {
+    try {
+      const draft = {
+        zoneArea,
+        workStatus,
+        inspectionDate,
+        repairDate,
+        repairTimeStart,
+        repairTimeEnd,
+        shutOffTimeStart,
+        shutOffTimeEnd,
+        reporterName,
+        reportReceivedAt,
+        leakLocationDetail,
+        latitude,
+        longitude,
+        initialReportNotes,
+        photoBeforeUrl,
+        photoBeforeTag,
+        photoBeforeTimestamp,
+        photoAfterUrl,
+        photoAfterTag,
+        photoAfterTimestamp,
+        physicalInspectionResult,
+        physicalInspectionNotes,
+        repairActionTaken,
+        repairActionNotes,
+        selectedMaterialId,
+        materialSpecInput,
+        materialQtyInput,
+        materialsList,
+      };
+      const serialized = JSON.stringify(draft);
+      sessionStorage.setItem(DRAFT_KEY, serialized);
+      localStorage.setItem(DRAFT_KEY, serialized);
+    } catch {
+      // ignore storage quota error
+    }
+  }, [
+    zoneArea,
+    workStatus,
+    inspectionDate,
+    repairDate,
+    repairTimeStart,
+    repairTimeEnd,
+    shutOffTimeStart,
+    shutOffTimeEnd,
+    reporterName,
+    reportReceivedAt,
+    leakLocationDetail,
+    latitude,
+    longitude,
+    initialReportNotes,
+    photoBeforeUrl,
+    photoBeforeTag,
+    photoBeforeTimestamp,
+    photoAfterUrl,
+    photoAfterTag,
+    photoAfterTimestamp,
+    physicalInspectionResult,
+    physicalInspectionNotes,
+    repairActionTaken,
+    repairActionNotes,
+    selectedMaterialId,
+    materialSpecInput,
+    materialQtyInput,
+    materialsList,
+  ]);
 
   // Pre-select first material if available
   useEffect(() => {
@@ -202,109 +283,98 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
     });
   };
 
-  // Process photo and watermark with GPS & Timestamp
-  const processAndWatermarkPhoto = async (
-    file: File,
-    type: 'before' | 'after',
-    coords?: { lat: number; lng: number }
-  ) => {
+  // Safe lightweight photo compression (removes heavy watermarking to prevent mobile memory crashes & page reloads)
+  const safeCompressPhoto = (file: File, type: 'before' | 'after') => {
     setIsProcessingPhoto(true);
     const reader = new FileReader();
 
-    reader.onload = async (e) => {
+    reader.onload = (e) => {
       const img = new Image();
-      img.src = e.target?.result as string;
-
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width || 1280;
-        canvas.height = img.height || 960;
-        const ctx = canvas.getContext('2d');
+        try {
+          const maxDim = 1024;
+          let w = img.width || 800;
+          let h = img.height || 600;
 
-        if (ctx) {
-          // Draw base image
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-          // Calculate watermark dimensions
-          const now = new Date();
-          const timestampStr = now.toLocaleString('id-ID', {
-            dateStyle: 'medium',
-            timeStyle: 'medium',
-          }) + ' WIB';
-          const latVal = coords ? coords.lat : (latitude ?? 0);
-          const lngVal = coords ? coords.lng : (longitude ?? 0);
-          const tag = type === 'before' ? 'AAT-LEAK-BEFORE' : 'AAT-LEAK-AFTER';
-
-          // Watermark banner background at bottom
-          const bannerHeight = Math.max(90, Math.floor(canvas.height * 0.1));
-          ctx.fillStyle = 'rgba(0, 19, 38, 0.88)';
-          ctx.fillRect(0, canvas.height - bannerHeight, canvas.width, bannerHeight);
-
-          // Accent border line
-          ctx.fillStyle = type === 'before' ? '#ef4444' : '#10b981';
-          ctx.fillRect(0, canvas.height - bannerHeight, canvas.width, 5);
-
-          // Watermark text
-          ctx.fillStyle = '#ffffff';
-          ctx.font = `bold ${Math.max(16, Math.floor(bannerHeight * 0.28))}px sans-serif`;
-          ctx.fillText(
-            `PT AETRA AIR TANGERANG • ${tag}`,
-            24,
-            canvas.height - bannerHeight + Math.floor(bannerHeight * 0.38)
-          );
-
-          ctx.font = `${Math.max(13, Math.floor(bannerHeight * 0.22))}px monospace`;
-          ctx.fillStyle = '#93c5fd';
-          ctx.fillText(
-            `GPS: ${latVal.toFixed(6)}, ${lngVal.toFixed(6)} | WAKTU: ${timestampStr}`,
-            24,
-            canvas.height - bannerHeight + Math.floor(bannerHeight * 0.72)
-          );
-
-          // Status stamp pill on right
-          const stampText = type === 'before' ? 'SEBELUM PERBAIKAN' : 'SETELAH PERBAIKAN';
-          ctx.fillStyle = type === 'before' ? '#dc2626' : '#059669';
-          const stampWidth = Math.max(180, Math.floor(canvas.width * 0.24));
-          const stampX = canvas.width - stampWidth - 24;
-          const stampY = canvas.height - bannerHeight + 16;
-          const stampH = bannerHeight - 32;
-
-          ctx.fillRect(stampX, stampY, stampWidth, stampH);
-          ctx.fillStyle = '#ffffff';
-          ctx.font = `bold ${Math.max(13, Math.floor(stampH * 0.45))}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.fillText(stampText, stampX + stampWidth / 2, stampY + stampH * 0.65);
-          ctx.textAlign = 'left';
-
-          const finalDataUrl = canvas.toDataURL('image/jpeg', 0.9);
-
-          if (type === 'before') {
-            setPhotoBeforeUrl(finalDataUrl);
-            setPhotoBeforeTag(tag);
-            setPhotoBeforeTimestamp(timestampStr);
-          } else {
-            setPhotoAfterUrl(finalDataUrl);
-            setPhotoAfterTag(tag);
-            setPhotoAfterTimestamp(timestampStr);
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
           }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, w, h);
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+
+            // Immediately free canvas memory
+            canvas.width = 0;
+            canvas.height = 0;
+
+            const now = new Date();
+            const timestampStr =
+              now.toLocaleString('id-ID', {
+                dateStyle: 'medium',
+                timeStyle: 'medium',
+              }) + ' WIB';
+            const tag = type === 'before' ? 'AAT-LEAK-BEFORE' : 'AAT-LEAK-AFTER';
+
+            if (type === 'before') {
+              setPhotoBeforeUrl(compressedDataUrl);
+              setPhotoBeforeTag(tag);
+              setPhotoBeforeTimestamp(timestampStr);
+            } else {
+              setPhotoAfterUrl(compressedDataUrl);
+              setPhotoAfterTag(tag);
+              setPhotoAfterTimestamp(timestampStr);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to compress photo safely:', err);
+          const fallbackUrl = (e.target?.result as string) || '';
+          if (type === 'before') {
+            setPhotoBeforeUrl(fallbackUrl);
+          } else {
+            setPhotoAfterUrl(fallbackUrl);
+          }
+        } finally {
+          setIsProcessingPhoto(false);
         }
+      };
+
+      img.onerror = () => {
         setIsProcessingPhoto(false);
       };
+
+      img.src = e.target?.result as string;
+    };
+
+    reader.onerror = () => {
+      setIsProcessingPhoto(false);
     };
 
     reader.readAsDataURL(file);
   };
 
   // Handle Photo Before Capture
-  // Special Requirement:
-  // "Untuk field longitude & latitude dapat tersinkronasi otomatis ketika pengambilan foto "Sebelum"."
-  const handlePhotoBeforeSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Instantly processes photo and runs GPS synchronization non-blockingly in background
+  const handlePhotoBeforeSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Automatically trigger GPS synchronization in parallel when taking photo "Sebelum"
-    const freshCoords = await syncGPSCoordinates();
-    await processAndWatermarkPhoto(file, 'before', freshCoords);
+    // Immediately compress & render photo to UI without waiting
+    safeCompressPhoto(file, 'before');
+
+    // Asynchronously synchronize GPS in background
+    syncGPSCoordinates();
   };
 
   const triggerCaptureBefore = () => {
@@ -316,9 +386,9 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
     }
   };
 
-  const handleLoadSampleBeforePhoto = async () => {
-    const freshCoords = await syncGPSCoordinates();
-    const sampleUrl = 'https://images.unsplash.com/photo-1541888946425-d0fbb18f15f6?auto=format&fit=crop&w=1280&q=80';
+  const handleLoadSampleBeforePhoto = () => {
+    syncGPSCoordinates();
+    const sampleUrl = 'https://images.unsplash.com/photo-1541888946425-d0fbb18f15f6?auto=format&fit=crop&w=1024&q=80';
     setPhotoBeforeUrl(sampleUrl);
     setPhotoBeforeTag('AAT-LEAK-BEFORE');
     setPhotoBeforeTimestamp(
@@ -327,11 +397,11 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
   };
 
   // Handle Photo After Capture
-  const handlePhotoAfterSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoAfterSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const freshCoords = await syncGPSCoordinates();
-    await processAndWatermarkPhoto(file, 'after', freshCoords);
+    safeCompressPhoto(file, 'after');
+    syncGPSCoordinates();
   };
 
   const triggerCaptureAfter = () => {
@@ -342,9 +412,9 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
     }
   };
 
-  const handleLoadSampleAfterPhoto = async () => {
-    const freshCoords = await syncGPSCoordinates();
-    const sampleUrl = 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1280&q=80';
+  const handleLoadSampleAfterPhoto = () => {
+    syncGPSCoordinates();
+    const sampleUrl = 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1024&q=80';
     setPhotoAfterUrl(sampleUrl);
     setPhotoAfterTag('AAT-LEAK-AFTER');
     setPhotoAfterTimestamp(
@@ -380,6 +450,12 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
       setMaterialQtyInput('');
       setMaterialsList([]);
       setFormError(null);
+      try {
+        sessionStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(DRAFT_KEY);
+      } catch {
+        // ignore
+      }
     }
   };
 
@@ -442,6 +518,12 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
       };
 
       onSubmitSuccess(newReportData as any);
+      try {
+        sessionStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(DRAFT_KEY);
+      } catch {
+        // ignore
+      }
       setSuccessToast('Formulir Perawatan & Perbaikan Kebocoran Pipa berhasil disimpan ke database!');
       setTimeout(() => setSuccessToast(null), 5000);
     } catch (err: any) {
@@ -454,13 +536,14 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
 
   return (
     <div className="space-y-6 pb-12 max-w-7xl mx-auto">
-      {/* Hidden Native File / Camera Inputs */}
+      {/* Hidden Native Camera Inputs (Restricted strictly to direct phone camera capture, disallowing internal storage) */}
       <input
         ref={photoBeforeInputRef}
         type="file"
         accept="image/*"
         capture="environment"
         onChange={handlePhotoBeforeSelected}
+        onClick={(e) => e.stopPropagation()}
         className="hidden"
       />
       <input
@@ -469,6 +552,7 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
         accept="image/*"
         capture="environment"
         onChange={handlePhotoAfterSelected}
+        onClick={(e) => e.stopPropagation()}
         className="hidden"
       />
 
@@ -727,7 +811,7 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
             </div>
 
             <span className="self-start sm:self-auto px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 text-[11px] font-bold border border-emerald-200 shrink-0">
-              Watermark GPS Otomatis
+              Dokumentasi Foto Lapangan
             </span>
           </div>
 
@@ -784,10 +868,10 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
                   </div>
                   <div className="flex items-center justify-center space-x-2 pt-1">
                     <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
-                      ⌖ Lat/Lng Embedded
+                      ✓ Kompresi Cepat &amp; Ringan
                     </span>
                     <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
-                      🕒 Timestamp
+                      ⌖ Sinkronisasi GPS
                     </span>
                   </div>
                   <p className="text-[10px] text-emerald-700 font-semibold italic">

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Gauge,
@@ -9,19 +9,74 @@ import {
   ShieldCheck,
   FileText,
   Download,
+  Edit2,
+  Trash2,
+  Save,
 } from 'lucide-react';
-import { InspectionRecord } from '../types/index.ts';
+import { InspectionRecord, UserProfile } from '../types/index.ts';
 
 interface InspectionDetailModalProps {
   record: InspectionRecord | null;
+  currentUser?: UserProfile | null;
   onClose: () => void;
+  onUpdateInspection?: (record: InspectionRecord) => Promise<void>;
+  onDeleteInspection?: (id: string) => Promise<void>;
 }
 
 export const InspectionDetailModal: React.FC<InspectionDetailModalProps> = ({
   record,
+  currentUser,
   onClose,
+  onUpdateInspection,
+  onDeleteInspection,
 }) => {
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [editPressure, setEditPressure] = useState<number>(record?.pressureBar || 0);
+  const [editStatus, setEditStatus] = useState<string>(record?.status || 'normal');
+  const [editNotes, setEditNotes] = useState<string>(record?.notes || '');
+  const [editInspector, setEditInspector] = useState<string>(record?.inspectorName || '');
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (record) {
+      setEditPressure(record.pressureBar);
+      setEditStatus(record.status);
+      setEditNotes(record.notes || '');
+      setEditInspector(record.inspectorName);
+    }
+  }, [record]);
+
   if (!record) return null;
+
+  const handleSaveEdit = async () => {
+    if (!onUpdateInspection) return;
+    setIsSaving(true);
+    try {
+      const pressurePsi = editPressure * 14.5038;
+      let statusLabel = 'Normal';
+      if (editStatus === 'warning') statusLabel = 'Peringatan Tekanan';
+      if (editStatus === 'critical') statusLabel = 'Kritis / Surge';
+
+      const updated: InspectionRecord = {
+        ...record,
+        pressureBar: editPressure,
+        pressurePsi,
+        status: editStatus as any,
+        statusLabel,
+        notes: editNotes,
+        inspectorName: editInspector,
+      };
+
+      await onUpdateInspection(updated);
+      setIsEditing(false);
+      alert('Data inspeksi berhasil diperbarui oleh Manager!');
+    } catch (err) {
+      console.error('Error updating inspection:', err);
+      alert('Gagal memperbarui data inspeksi.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4">
@@ -199,26 +254,132 @@ export const InspectionDetailModal: React.FC<InspectionDetailModalProps> = ({
             </div>
           </div>
 
-          {/* Physical Notes */}
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
-            <span className="text-slate-500 font-bold uppercase text-[10px] flex items-center gap-1.5 mb-1.5">
-              <FileText className="w-3.5 h-3.5 text-sky-700" />
-              Catatan Kondisi Fisik Katup & Pipa
-            </span>
-            <p className="text-slate-700 leading-relaxed italic">
-              "{record.notes || 'Tidak ada catatan khusus pada inspeksi ini.'}"
-            </p>
-          </div>
+          {/* Physical Notes or Manager Edit Form */}
+          {isEditing ? (
+            <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200 text-xs space-y-3">
+              <span className="text-amber-900 font-extrabold uppercase text-[11px] flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-amber-600" />
+                Form Update Data Inspeksi (Manager Privilege)
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Nilai Tekanan (Bar)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editPressure}
+                    onChange={(e) => setEditPressure(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 font-telemetry font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Status Diagnosa</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 font-semibold text-slate-900 focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="warning">Peringatan Tekanan</option>
+                    <option value="critical">Kritis / Surge</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Nama Petugas Inspeksi</label>
+                <input
+                  type="text"
+                  value={editInspector}
+                  onChange={(e) => setEditInspector(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 font-semibold text-slate-900 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Catatan Kondisi Fisik</label>
+                <textarea
+                  rows={2}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-slate-900 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+              <span className="text-slate-500 font-bold uppercase text-[10px] flex items-center gap-1.5 mb-1.5">
+                <FileText className="w-3.5 h-3.5 text-sky-700" />
+                Catatan Kondisi Fisik Katup &amp; Pipa
+              </span>
+              <p className="text-slate-700 leading-relaxed italic">
+                "{record.notes || 'Tidak ada catatan khusus pada inspeksi ini.'}"
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
-          <button
-            onClick={onClose}
-            className="py-2 px-5 bg-[#00162d] hover:bg-[#00274e] text-white rounded-xl text-xs font-bold transition-colors"
-          >
-            Tutup
-          </button>
+        <div className="p-3.5 sm:px-6 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+          <span className="text-slate-500 font-mono text-[11px]">
+            ID Inspeksi: {record.id}
+          </span>
+          <div className="flex items-center space-x-2">
+            {currentUser?.role === 'manager' && onUpdateInspection && (
+              isEditing ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(false)}
+                    className="py-1.5 px-3.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl font-bold transition-all cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveEdit}
+                    disabled={isSaving}
+                    className="py-1.5 px-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold transition-all cursor-pointer flex items-center space-x-1.5"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  className="py-1.5 px-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold transition-all cursor-pointer flex items-center space-x-1.5 shadow-xs"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Edit Data (Manager)</span>
+                </button>
+              )
+            )}
+            {currentUser?.role === 'manager' && onDeleteInspection && !isEditing && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (confirm(`Apakah Anda yakin ingin menghapus data inspeksi #${record.id}?`)) {
+                    await onDeleteInspection(record.id);
+                    onClose();
+                  }
+                }}
+                className="py-1.5 px-3.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold transition-all cursor-pointer flex items-center space-x-1.5 shadow-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="py-1.5 px-4 bg-[#00162d] hover:bg-[#00274e] text-white rounded-xl font-bold transition-colors cursor-pointer"
+            >
+              Tutup
+            </button>
+          </div>
         </div>
       </div>
     </div>

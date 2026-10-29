@@ -28,13 +28,18 @@ import {
   RepairMaterial,
   LeakageMaterialUsed,
   NetworkLeakageRecord,
+  PCArea,
 } from '../types/index.ts';
 import { TimeRangeInput } from './TimeRangeInput.tsx';
 
 interface NetworkLeakageInputViewProps {
   materials: RepairMaterial[];
   currentUser: UserProfile;
+  pcAreas?: PCArea[];
+  editingRecord?: NetworkLeakageRecord | null;
   onSaveRecord: (record: Omit<NetworkLeakageRecord, 'id' | 'timestamp' | 'createdAt'>) => Promise<void>;
+  onUpdateRecord?: (record: NetworkLeakageRecord) => Promise<void>;
+  onCancelEdit?: () => void;
   onNavigateToDashboard?: () => void;
   onNavigateToMasterData?: () => void;
 }
@@ -42,7 +47,11 @@ interface NetworkLeakageInputViewProps {
 export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = ({
   materials,
   currentUser,
+  pcAreas = [],
+  editingRecord,
   onSaveRecord,
+  onUpdateRecord,
+  onCancelEdit,
   onNavigateToDashboard,
   onNavigateToMasterData,
 }) => {
@@ -62,92 +71,90 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
     return `${hours}:${minutes}`;
   };
 
-  // Safe image compression & watermarking: downscales to max 1280px and 0.80 JPEG
-  // to avoid mobile browser memory spikes and tab crashes/reloads
-  const compressAndWatermarkImage = (
+  // Lightweight image downscaling without any watermark to prevent RAM exhaustion and tab reload crashes
+  const safeCompressImage = (
     file: File,
-    title: string,
-    coords: { lat: number; lng: number; accuracy: number },
-    timestampText: string,
-    accentColor: string
+    _title?: string,
+    _coords?: { lat: number; lng: number; accuracy: number },
+    _timestampText?: string,
+    _accentColor?: string
   ): Promise<string> => {
     return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onerror = () => resolve('');
-      reader.onload = (event) => {
-        const rawData = event.target?.result as string;
-        if (!rawData) {
-          resolve('');
-          return;
-        }
-        const img = new Image();
-        img.onerror = () => resolve(rawData);
-        img.onload = () => {
+      let objectUrl: string | null = null;
+      try {
+        objectUrl = URL.createObjectURL(file);
+      } catch {
+        const reader = new FileReader();
+        reader.onerror = () => resolve('');
+        reader.onload = (event) => resolve((event.target?.result as string) || '');
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const img = new Image();
+      img.onerror = () => {
+        if (objectUrl) {
           try {
-            // Scale down to max 1280px on the longest dimension
-            const maxDim = 1280;
-            let width = img.width;
-            let height = img.height;
-            if (width > maxDim || height > maxDim) {
-              if (width > height) {
-                height = Math.round((height * maxDim) / width);
-                width = maxDim;
-              } else {
-                width = Math.round((width * maxDim) / height);
-                height = maxDim;
-              }
-            }
-
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              resolve(rawData);
-              return;
-            }
-
-            ctx.drawImage(img, 0, 0, width, height);
-
-            // Watermark strip at bottom
-            const stripHeight = Math.max(48, Math.floor(height * 0.12));
-            ctx.fillStyle = 'rgba(0, 22, 45, 0.90)';
-            ctx.fillRect(0, height - stripHeight, width, stripHeight);
-
-            // Watermark title
-            ctx.fillStyle = accentColor;
-            ctx.font = `bold ${Math.max(13, Math.floor(stripHeight * 0.28))}px monospace`;
-            ctx.fillText(title, 16, height - stripHeight + stripHeight * 0.35);
-
-            // Watermark GPS and time
-            ctx.fillStyle = '#ffffff';
-            ctx.font = `${Math.max(11, Math.floor(stripHeight * 0.22))}px monospace`;
-            ctx.fillText(
-              `GPS: ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)} (±${coords.accuracy}m)`,
-              16,
-              height - stripHeight + stripHeight * 0.65
-            );
-            ctx.fillText(timestampText, 16, height - stripHeight + stripHeight * 0.9);
-
-            const result = canvas.toDataURL('image/jpeg', 0.80);
-            canvas.width = 0;
-            canvas.height = 0;
-            resolve(result);
-          } catch (err) {
-            console.warn('Canvas watermarking error:', err);
-            resolve(rawData);
+            URL.revokeObjectURL(objectUrl);
+          } catch {
+            // ignore
           }
-        };
-        img.src = rawData;
+        }
+        const reader = new FileReader();
+        reader.onerror = () => resolve('');
+        reader.onload = (event) => resolve((event.target?.result as string) || '');
+        reader.readAsDataURL(file);
       };
-      reader.readAsDataURL(file);
+
+      img.onload = () => {
+        try {
+          // Scale down to max 1024px to ensure minimal memory footprint (~80KB output)
+          const maxDim = 1024;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            resolve(objectUrl);
+            return;
+          }
+
+          // Draw pure clean photo without ANY watermark
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const result = canvas.toDataURL('image/jpeg', 0.75);
+          canvas.width = 0;
+          canvas.height = 0;
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          resolve(result);
+        } catch (err) {
+          console.warn('Image downscaling fallback:', err);
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          resolve(objectUrl);
+        }
+      };
+
+      img.src = objectUrl;
     });
   };
 
-  // Session draft persistence to prevent any data loss on mobile OS tab resume
+  // Draft persistence in both sessionStorage and localStorage to prevent any data loss on mobile OS tab resume
   const getDraft = () => {
     try {
-      const saved = sessionStorage.getItem('leakage_form_draft');
+      const saved = sessionStorage.getItem('leakage_form_draft') || localStorage.getItem('leakage_form_draft');
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
@@ -171,6 +178,10 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
   // ==========================================
   const [reporterInspector, setReporterInspector] = useState<string>(initialDraft?.reporterInspector || '');
   const [reportReceivedTime, setReportReceivedTime] = useState<string>(initialDraft?.reportReceivedTime || '');
+  const [zona, setZona] = useState<'Zona 1' | 'Zona 2' | string>(initialDraft?.zona || 'Zona 1');
+  const [selectedPCAreaId, setSelectedPCAreaId] = useState<string>(
+    initialDraft?.pcAreaId || (pcAreas.length > 0 ? pcAreas[0].id : 'PC 1')
+  );
   const [leakLocationDetail, setLeakLocationDetail] = useState<string>(initialDraft?.leakLocationDetail || '');
   const [latitude, setLatitude] = useState<number | null>(initialDraft?.latitude ?? null);
   const [longitude, setLongitude] = useState<number | null>(initialDraft?.longitude ?? null);
@@ -178,6 +189,13 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [initialReportNotes, setInitialReportNotes] = useState<string>(initialDraft?.initialReportNotes || '');
   const [gpsSyncToast, setGpsSyncToast] = useState<string | null>(null);
+
+  // Keep selectedPCAreaId synchronized when pcAreas loads
+  useEffect(() => {
+    if (pcAreas.length > 0 && !selectedPCAreaId) {
+      setSelectedPCAreaId(pcAreas[0].id);
+    }
+  }, [pcAreas, selectedPCAreaId]);
 
   // ==========================================
   // SECTION 3: FOTO KEBOCORAN & PERBAIKAN
@@ -198,6 +216,10 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
   const [inspectionNotes, setInspectionNotes] = useState<string>(initialDraft?.inspectionNotes || '');
   const [repairActionTaken, setRepairActionTaken] = useState<string>(initialDraft?.repairActionTaken || '');
   const [mitigationNotes, setMitigationNotes] = useState<string>(initialDraft?.mitigationNotes || '');
+  const [estimasiNRW, setEstimasiNRW] = useState<string>(initialDraft?.estimasiNRW || '');
+  const [recordStatus, setRecordStatus] = useState<'Baru' | 'Selesai' | 'Diverifikasi' | string>(
+    initialDraft?.status || 'Selesai'
+  );
 
   // ==========================================
   // SECTION 5: PENGGUNAAN MATERIAL PERBAIKAN
@@ -212,6 +234,40 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
   const [submittedRecordId, setSubmittedRecordId] = useState<string>('');
 
+  // Synchronize state when editingRecord changes
+  useEffect(() => {
+    if (editingRecord) {
+      setInspectionDate(editingRecord.inspectionDate || getTodayISO());
+      setRepairDate(editingRecord.repairDate || getTodayISO());
+      setRepairStartTime(editingRecord.repairStartTime || '');
+      setRepairEndTime(editingRecord.repairEndTime || '');
+      setIsShutOff(editingRecord.isShutOffOccurred ?? false);
+      setShutOffStartTime(editingRecord.shutOffStartTime || '');
+      setShutOffEndTime(editingRecord.shutOffEndTime || '');
+      setReporterInspector(editingRecord.reporterInspector || '');
+      setReportReceivedTime(editingRecord.reportReceivedTime || '');
+      setZona(editingRecord.zona || 'Zona 1');
+      setSelectedPCAreaId(editingRecord.pcAreaId || (pcAreas.length > 0 ? pcAreas[0].id : 'PC 1'));
+      setLeakLocationDetail(editingRecord.leakLocationDetail || '');
+      setLatitude(editingRecord.latitude ?? null);
+      setLongitude(editingRecord.longitude ?? null);
+      setGpsAccuracy(editingRecord.gpsAccuracyMeters ?? null);
+      setInitialReportNotes(editingRecord.initialReportNotes || '');
+      setPhotoBeforeUrl(editingRecord.photoBeforeUrl || '');
+      setPhotoBeforeTimestamp(editingRecord.photoBeforeTimestamp || '');
+      setPhotoAfterUrl(editingRecord.photoAfterUrl || '');
+      setPhotoAfterTimestamp(editingRecord.photoAfterTimestamp || '');
+      setPipeType(editingRecord.pipeType || '');
+      setPhysicalInspectionResult(editingRecord.physicalInspectionResult || '');
+      setInspectionNotes(editingRecord.inspectionNotes || '');
+      setRepairActionTaken(editingRecord.repairActionTaken || '');
+      setMitigationNotes(editingRecord.mitigationNotes || '');
+      setEstimasiNRW(editingRecord.estimasiNRW || '');
+      setMaterialsUsedList(editingRecord.materialsUsed || []);
+      setRecordStatus(editingRecord.status || 'Selesai');
+    }
+  }, [editingRecord]);
+
   // Auto-save form draft to sessionStorage
   useEffect(() => {
     try {
@@ -225,6 +281,8 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
         shutOffEndTime,
         reporterInspector,
         reportReceivedTime,
+        zona,
+        pcAreaId: selectedPCAreaId,
         leakLocationDetail,
         latitude,
         longitude,
@@ -239,9 +297,16 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
         inspectionNotes,
         repairActionTaken,
         mitigationNotes,
+        estimasiNRW,
         materialsUsedList,
       };
-      sessionStorage.setItem('leakage_form_draft', JSON.stringify(dataToSave));
+      const json = JSON.stringify(dataToSave);
+      sessionStorage.setItem('leakage_form_draft', json);
+      try {
+        localStorage.setItem('leakage_form_draft', json);
+      } catch {
+        // ignore
+      }
     } catch {
       // ignore
     }
@@ -255,6 +320,8 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
     shutOffEndTime,
     reporterInspector,
     reportReceivedTime,
+    zona,
+    selectedPCAreaId,
     leakLocationDetail,
     latitude,
     longitude,
@@ -324,72 +391,66 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
   };
 
   // ==========================================
-  // SYNC GPS AUTOMATICALLY WHEN PHOTO "SEBELUM" IS TAKEN
+  // PHOTO "SEBELUM" CAPTURE (IMMEDIATE & NON-BLOCKING)
   // ==========================================
   const handlePhotoBeforeCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Immediately trigger GPS sync
-    setIsLocating(true);
-    const coords = await acquireCurrentGPS();
-    setLatitude(coords.lat);
-    setLongitude(coords.lng);
-    setGpsAccuracy(coords.accuracy);
-    setIsLocating(false);
-
     const nowStr = `${new Date().toLocaleDateString('id-ID')} ${new Date().toLocaleTimeString('id-ID')} WIB`;
     setPhotoBeforeTimestamp(nowStr);
 
     try {
-      const watermarked = await compressAndWatermarkImage(
-        file,
-        'AETRA FOTO SEBELUM PERBAIKAN (BEFORE)',
-        coords,
-        `WAKTU: ${nowStr}`,
-        '#38bdf8'
-      );
-      setPhotoBeforeUrl(watermarked);
+      // 1. Process & show photo immediately without waiting for GPS
+      const compressed = await safeCompressImage(file);
+      if (compressed) {
+        setPhotoBeforeUrl(compressed);
+      }
     } catch (err) {
       console.error('Error processing photo before:', err);
     }
     e.target.value = '';
 
-    setGpsSyncToast(`📍 Koordinat GPS (${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}) otomatis tersinkron dari Foto Sebelum!`);
-    setTimeout(() => setGpsSyncToast(null), 4000);
+    // 2. Synchronize GPS in the background without blocking photo display
+    acquireCurrentGPS().then((coords) => {
+      if (coords && coords.lat) {
+        setLatitude(coords.lat);
+        setLongitude(coords.lng);
+        setGpsAccuracy(coords.accuracy);
+        setGpsSyncToast(`📍 Koordinat GPS (${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}) otomatis tersinkron dari Foto Sebelum!`);
+        setTimeout(() => setGpsSyncToast(null), 4000);
+      }
+    }).catch(console.warn);
   };
 
   const handlePhotoAfterCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Immediately trigger GPS sync
-    setIsLocating(true);
-    const coords = await acquireCurrentGPS();
-    setLatitude(coords.lat);
-    setLongitude(coords.lng);
-    setGpsAccuracy(coords.accuracy);
-    setIsLocating(false);
-
     const nowStr = `${new Date().toLocaleDateString('id-ID')} ${new Date().toLocaleTimeString('id-ID')} WIB`;
     setPhotoAfterTimestamp(nowStr);
 
     try {
-      const watermarked = await compressAndWatermarkImage(
-        file,
-        'AETRA FOTO SETELAH PERBAIKAN (AFTER)',
-        coords,
-        `SELESAI: ${nowStr}`,
-        '#34d399'
-      );
-      setPhotoAfterUrl(watermarked);
+      // 1. Process & show photo immediately without waiting for GPS
+      const compressed = await safeCompressImage(file);
+      if (compressed) {
+        setPhotoAfterUrl(compressed);
+      }
     } catch (err) {
       console.error('Error processing photo after:', err);
     }
     e.target.value = '';
 
-    setGpsSyncToast(`📍 Koordinat GPS (${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}) otomatis tersinkron dari Foto Setelah Perbaikan!`);
-    setTimeout(() => setGpsSyncToast(null), 4000);
+    // 2. Synchronize GPS in the background without blocking photo display
+    acquireCurrentGPS().then((coords) => {
+      if (coords && coords.lat) {
+        setLatitude(coords.lat);
+        setLongitude(coords.lng);
+        setGpsAccuracy(coords.accuracy);
+        setGpsSyncToast(`📍 Koordinat GPS (${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}) otomatis tersinkron dari Foto Setelah Perbaikan!`);
+        setTimeout(() => setGpsSyncToast(null), 4000);
+      }
+    }).catch(console.warn);
   };
 
   // Add material row
@@ -455,6 +516,7 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
       setInspectionNotes('');
       setRepairActionTaken('');
       setMitigationNotes('');
+      setEstimasiNRW('');
       setSelectedMaterialId('');
       setMaterialSpecInput('');
       setMaterialQtyInput('');
@@ -498,6 +560,50 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
 
     setIsSubmitting(true);
     try {
+      if (editingRecord && onUpdateRecord) {
+        const updatedRecordData: NetworkLeakageRecord = {
+          ...editingRecord,
+          inspectionDate,
+          repairDate,
+          repairStartTime,
+          repairEndTime,
+          shutOffStartTime: isShutOff ? shutOffStartTime : '--:--',
+          shutOffEndTime: isShutOff ? shutOffEndTime : '--:--',
+          isShutOffOccurred: isShutOff,
+          reporterInspector,
+          reportReceivedTime,
+          zona,
+          pcAreaId: selectedPCAreaId,
+          leakLocationDetail,
+          latitude: latitude ?? 0,
+          longitude: longitude ?? 0,
+          gpsAccuracyMeters: gpsAccuracy ?? undefined,
+          initialReportNotes,
+          photoBeforeUrl: photoBeforeUrl || photoAfterUrl,
+          photoBeforeTimestamp: photoBeforeTimestamp || photoAfterTimestamp,
+          photoAfterUrl,
+          photoAfterTimestamp,
+          pipeType,
+          physicalInspectionResult,
+          inspectionNotes,
+          repairActionTaken,
+          mitigationNotes,
+          estimasiNRW,
+          materialsUsed: materialsUsedList,
+          status: recordStatus as any,
+        };
+
+        await onUpdateRecord(updatedRecordData);
+        try {
+          sessionStorage.removeItem('leakage_form_draft');
+        } catch {
+          // ignore
+        }
+        setSubmittedRecordId(editingRecord.id);
+        setShowSuccessModal(true);
+        return;
+      }
+
       const newRecordData: Omit<NetworkLeakageRecord, 'id' | 'timestamp' | 'createdAt'> = {
         inspectionDate,
         repairDate,
@@ -508,6 +614,8 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
         isShutOffOccurred: isShutOff,
         reporterInspector,
         reportReceivedTime,
+        zona,
+        pcAreaId: selectedPCAreaId,
         leakLocationDetail,
         latitude: latitude ?? 0,
         longitude: longitude ?? 0,
@@ -522,9 +630,10 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
         inspectionNotes,
         repairActionTaken,
         mitigationNotes,
+        estimasiNRW,
         materialsUsed: materialsUsedList,
         sopReference: 'SOP: AAT/DIST/FM-02',
-        status: 'Selesai',
+        status: (recordStatus as any) || 'Selesai',
         createdBy: currentUser.name || 'Inspector Lapangan',
       };
 
@@ -546,13 +655,14 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
 
   return (
     <div className="space-y-6 pb-16 max-w-6xl mx-auto">
-      {/* Hidden file inputs for Camera & Upload */}
+      {/* Hidden file inputs strictly for Direct Phone Camera Capture (disallowing internal storage) */}
       <input
         ref={photoBeforeInputRef}
         type="file"
         accept="image/*"
         capture="environment"
         onChange={handlePhotoBeforeCapture}
+        onClick={(e) => e.stopPropagation()}
         className="hidden"
       />
       <input
@@ -561,6 +671,7 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
         accept="image/*"
         capture="environment"
         onChange={handlePhotoAfterCapture}
+        onClick={(e) => e.stopPropagation()}
         className="hidden"
       />
 
@@ -591,6 +702,34 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
           Dokumentasi resmi berita acara penanganan kebocoran pipa transmisi &amp; distribusi, perekaman foto lapangan sebelum &amp; setelah perbaikan, koordinat GPS, serta alokasi material suku cadang PT Aetra Air Tangerang.
         </p>
       </div>
+
+      {/* Manager Edit Mode Banner */}
+      {editingRecord && (
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl text-xs text-amber-950 font-bold flex flex-wrap items-center justify-between gap-3 shadow-md animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 rounded-xl bg-amber-500 text-white shrink-0 shadow-xs">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="font-heading font-extrabold text-sm uppercase tracking-wider text-amber-950 block">
+                Privilese Manager: Mode Edit Data Laporan #{editingRecord.id}
+              </span>
+              <span className="text-amber-800 font-medium">
+                Anda memiliki akses Manager untuk memperbarui detail rekaman laporan kebocoran yang telah diinput sebelumnya.
+              </span>
+            </div>
+          </div>
+          {onCancelEdit && (
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              className="py-1.5 px-3.5 bg-amber-200 hover:bg-amber-300 text-amber-950 rounded-xl font-bold text-xs transition-colors cursor-pointer border border-amber-400"
+            >
+              Batal Edit
+            </button>
+          )}
+        </div>
+      )}
 
       {/* GPS Sync Notification Toast */}
       {gpsSyncToast && (
@@ -688,6 +827,7 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
               theme="amber"
             />
           </div>
+
         </div>
 
         {/* ======================================================== */}
@@ -709,7 +849,7 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
 
             <div className="self-start sm:self-auto px-3 py-1 bg-emerald-50 text-emerald-800 rounded-lg text-xs font-bold border border-emerald-200 flex items-center space-x-1">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Watermark GPS Otomatis</span>
+              <span>Dokumentasi Foto Lapangan</span>
             </div>
           </div>
 
@@ -779,7 +919,7 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
                   type="button"
                   className="mt-3.5 py-1.5 px-4 rounded-xl bg-white border border-slate-300 text-slate-700 text-xs font-bold shadow-2xs group-hover:border-emerald-500 group-hover:text-emerald-700 transition-colors"
                 >
-                  Pilih File / Kamera
+                  Buka Kamera HP Langsung
                 </button>
               </div>
             )}
@@ -849,6 +989,63 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
                 placeholder="Contoh: 22/10/2026 09:30 WIB"
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-semibold focus:outline-none focus:bg-white focus:border-sky-500"
               />
+            </div>
+          </div>
+
+          {/* Zona & Area PC */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            {/* Zona */}
+            <div>
+              <label className="block font-bold text-slate-700 mb-1.5">
+                Zona <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={zona}
+                onChange={(e) => setZona(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-semibold focus:outline-none focus:bg-white focus:border-sky-500 cursor-pointer transition-colors"
+              >
+                <option value="Zona 1">Zona 1</option>
+                <option value="Zona 2">Zona 2</option>
+              </select>
+            </div>
+
+            {/* Area PC */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="font-bold text-slate-700">
+                  Area PC <span className="text-rose-500">*</span>
+                </label>
+                {onNavigateToMasterData && (
+                  <button
+                    type="button"
+                    onClick={onNavigateToMasterData}
+                    className="text-[10px] text-sky-700 hover:text-sky-900 font-semibold cursor-pointer"
+                  >
+                    Master PC ›
+                  </button>
+                )}
+              </div>
+              <select
+                value={selectedPCAreaId}
+                onChange={(e) => setSelectedPCAreaId(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-semibold focus:outline-none focus:bg-white focus:border-sky-500 cursor-pointer transition-colors"
+              >
+                {pcAreas && pcAreas.length > 0 ? (
+                  pcAreas.map((area) => (
+                    <option key={area.id} value={area.id}>
+                      {area.id} - {area.name} ({area.region})
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="PC 1">PC 1 - Wilayah Sepatan (Sepatan)</option>
+                    <option value="PC 2">PC 2 - Wilayah Pasar Kemis (Pasar Kemis)</option>
+                    <option value="PC 3">PC 3 - Wilayah Cikupa (Cikupa)</option>
+                    <option value="PC 4">PC 4 - Wilayah Jayanti & Balaraja (Jayanti & Balaraja)</option>
+                    <option value="PC 5">PC 5 - Wilayah Sindang Jaya (Sindang Jaya)</option>
+                  </>
+                )}
+              </select>
             </div>
           </div>
 
@@ -1013,6 +1210,24 @@ export const NetworkLeakageInputView: React.FC<NetworkLeakageInputViewProps> = (
                   placeholder=""
                   className="w-full bg-transparent text-[11px] text-slate-700 focus:outline-none"
                 />
+              </div>
+            </div>
+          </div>
+          {/* Estimasi NRW (Potensi Kehilangan Air) */}
+          <div className="text-xs">
+            <label className="block font-bold text-slate-700 mb-1.5">
+              Estimasi NRW (Potensi Kehilangan Air)
+            </label>
+            <div className="relative flex items-center">
+              <input
+                type="text"
+                value={estimasiNRW}
+                onChange={(e) => setEstimasiNRW(e.target.value)}
+                placeholder="Contoh: 12"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3.5 pr-14 py-2.5 text-slate-800 font-semibold focus:outline-none focus:bg-white focus:border-sky-500"
+              />
+              <div className="absolute right-3 pointer-events-none text-slate-600 font-bold text-xs bg-slate-200/80 px-2 py-1 rounded-md border border-slate-300">
+                m³
               </div>
             </div>
           </div>

@@ -485,36 +485,28 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
       }
     : evaluatePressureStatus(currentBar, effectiveThresholds);
 
-  // Safe image compression & telemetry HUD watermarking:
-  // Uses URL.createObjectURL + Canvas downscaling to max 1280px to prevent mobile RAM crashes
-  const processAndWatermarkPhoto = (
-    file: File | string,
-    coords?: { lat: number; lng: number; acc: number },
-    customTag?: string
-  ): Promise<string> => {
+  // Lightweight image downscaling without any watermark to prevent RAM exhaustion and tab reload crashes
+  const safeCompressPhoto = (file: File | string): Promise<string> => {
     return new Promise((resolve) => {
-      let objectUrl: string | null = null;
-      let imgSrc = '';
-
       if (typeof file === 'string') {
-        imgSrc = file;
-      } else {
-        try {
-          objectUrl = URL.createObjectURL(file);
-          imgSrc = objectUrl;
-        } catch {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            imgSrc = e.target?.result as string;
-            loadImg(imgSrc);
-          };
-          reader.onerror = () => resolve('');
-          reader.readAsDataURL(file);
-          return;
-        }
+        resolve(file);
+        return;
       }
 
-      const cleanup = () => {
+      let objectUrl: string | null = null;
+      try {
+        objectUrl = URL.createObjectURL(file);
+      } catch {
+        // Fallback to FileReader
+        const reader = new FileReader();
+        reader.onload = (e) => resolve((e.target?.result as string) || '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const img = new Image();
+      img.onerror = () => {
         if (objectUrl) {
           try {
             URL.revokeObjectURL(objectUrl);
@@ -522,123 +514,58 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
             // ignore
           }
         }
+        const reader = new FileReader();
+        reader.onload = (e) => resolve((e.target?.result as string) || '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
       };
 
-      const loadImg = (source: string) => {
-        const img = new Image();
-        // Do NOT set crossOrigin on blob or data URL to prevent WebKit/Safari security faults
-        img.onerror = () => {
-          cleanup();
-          resolve(source);
-        };
-        img.onload = () => {
-          try {
-            const maxDim = 1280;
-            let width = img.width;
-            let height = img.height;
-            if (width > maxDim || height > maxDim) {
-              if (width > height) {
-                height = Math.round((height * maxDim) / width);
-                width = maxDim;
-              } else {
-                width = Math.round((width * maxDim) / height);
-                height = maxDim;
-              }
+      img.onload = () => {
+        try {
+          // Downscale to max 1024px to ensure minimal memory usage (~80KB output)
+          const maxDim = 1024;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
             }
-
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              cleanup();
-              resolve(source);
-              return;
-            }
-
-            // Draw captured photo resized
-            ctx.drawImage(img, 0, 0, width, height);
-
-            // Bottom gradient HUD overlay for high contrast text readability
-            const gradHeight = Math.max(120, height * 0.22);
-            const grad = ctx.createLinearGradient(0, height - gradHeight, 0, height);
-            grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-            grad.addColorStop(0.35, 'rgba(0, 0, 0, 0.65)');
-            grad.addColorStop(1, 'rgba(0, 0, 0, 0.92)');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, height - gradHeight, width, gradHeight);
-
-            // Top-Left Watermark Badge
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.beginPath();
-            ctx.roundRect(20, 20, 250, 36, 8);
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-            ctx.lineWidth = 1;
-            ctx.stroke();
-
-            ctx.fillStyle = '#38bdf8';
-            ctx.font = 'bold 15px sans-serif';
-            ctx.fillText('🛡 Watermark Otomatis Tersemat', 32, 43);
-
-            // Bottom HUD Information
-            const timeStr = new Date().toLocaleTimeString('id-ID') + ' WIB';
-            const fontSize = Math.max(14, Math.round(width * 0.022));
-
-            const useLat = coords ? coords.lat : (typeof latitude === 'number' ? latitude : -6.21462);
-            const useLng = coords ? coords.lng : (typeof longitude === 'number' ? longitude : 106.84513);
-            const useAcc = coords ? coords.acc : (gpsAccuracy ?? 3.0);
-            const currentTag = customTag || photoTag || `${(selectedPCAreaId || 'PC').replace(/\s+/g, '')}-MANO-INSP`;
-
-            ctx.font = `bold ${fontSize}px monospace`;
-            ctx.fillStyle = '#7dd3fc';
-            ctx.fillText(`TAG: ${currentTag} • ${timeStr}`, 24, height - (gradHeight * 0.55));
-
-            ctx.font = `${Math.round(fontSize * 0.85)}px monospace`;
-            ctx.fillStyle = '#cbd5e1';
-            ctx.fillText(
-              `GPS: ${useLat.toFixed(6)}, ${useLng.toFixed(6)} (±${useAcc}m)`,
-              24,
-              height - (gradHeight * 0.24)
-            );
-
-            // Right Pressure Badge
-            const barText = `${currentBar > 0 ? currentBar.toFixed(2) : '---'} BAR`;
-            const badgeW = Math.max(115, fontSize * 6.5);
-            const badgeH = Math.max(36, fontSize * 2);
-            const badgeX = width - badgeW - 24;
-            const badgeY = height - (gradHeight * 0.62);
-
-            ctx.fillStyle = '#10b981';
-            ctx.beginPath();
-            ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 8);
-            ctx.fill();
-
-            ctx.fillStyle = '#ffffff';
-            ctx.font = `bold ${Math.round(fontSize * 0.95)}px monospace`;
-            ctx.textAlign = 'center';
-            ctx.fillText(barText, badgeX + badgeW / 2, badgeY + badgeH * 0.68);
-            ctx.textAlign = 'left';
-
-            const finalUrl = canvas.toDataURL('image/jpeg', 0.80);
-            canvas.width = 0;
-            canvas.height = 0;
-            cleanup();
-            resolve(finalUrl);
-          } catch (err) {
-            console.warn('Canvas watermarking error:', err);
-            cleanup();
-            resolve(source);
           }
-        };
-        img.src = source;
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            resolve(objectUrl);
+            return;
+          }
+
+          // Draw pure photo without ANY watermark
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const finalUrl = canvas.toDataURL('image/jpeg', 0.75);
+          canvas.width = 0;
+          canvas.height = 0;
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          resolve(finalUrl);
+        } catch (err) {
+          console.warn('Image downscaling fallback:', err);
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          resolve(objectUrl);
+        }
       };
 
-      loadImg(imgSrc);
+      img.src = objectUrl;
     });
   };
 
-  // Native phone camera capture handler with memory protection and draft auto-save
+  // Phone camera capture handler with memory protection and draft auto-save
   const handleNativeCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -647,31 +574,26 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
     setCameraError(null);
 
     try {
-      // 1. Fetch GPS coordinates and automatically match & choose saved area
-      const gpsResult = await getCurrentGPSLocation(true, file);
-      const coords = { lat: gpsResult.lat, lng: gpsResult.lng, acc: gpsResult.acc };
+      // 1. Process & compress the photo immediately without watermark
+      const compressed = await safeCompressPhoto(file);
+      if (compressed) {
+        setPhotoUrl(compressed);
 
-      // 2. Compress and watermark safely with matched area photo tag
-      const watermarked = await processAndWatermarkPhoto(file, coords, gpsResult.photoTag);
-      if (watermarked) {
-        setPhotoUrl(watermarked);
-
-        // 3. Immediately save draft with updated matched area so mobile camera backgrounding preserves everything
-        const matchedLoc = gpsResult.matchedLoc;
-        const draftData = {
-          selectedPCAreaId: matchedLoc?.pcAreaId || selectedPCAreaId,
-          selectedLocationTitle: matchedLoc?.title || selectedLocationTitle,
-          pressureValue,
-          pressureUnit,
-          latitude: gpsResult.lat,
-          longitude: gpsResult.lng,
-          gpsAccuracy: gpsResult.acc,
-          notes,
-          photoUrl: watermarked,
-          photoTag: gpsResult.photoTag || photoTag,
-          autoSyncInfo: gpsResult.autoSyncInfo || autoSyncInfo,
-        };
+        // Save immediately to localStorage & sessionStorage so page never loses photo
         try {
+          const draftData = {
+            selectedPCAreaId,
+            selectedLocationTitle,
+            pressureValue,
+            pressureUnit,
+            latitude,
+            longitude,
+            gpsAccuracy,
+            notes,
+            photoUrl: compressed,
+            photoTag,
+            autoSyncInfo,
+          };
           const json = JSON.stringify(draftData);
           sessionStorage.setItem(INSPECTION_DRAFT_KEY, json);
           localStorage.setItem(INSPECTION_DRAFT_KEY, json);
@@ -679,6 +601,33 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
           // ignore
         }
       }
+
+      // 2. Asynchronously synchronize GPS without blocking photo display
+      getCurrentGPSLocation(true, file).then((gpsResult) => {
+        if (gpsResult && gpsResult.lat) {
+          const matchedLoc = gpsResult.matchedLoc;
+          const updatedDraft = {
+            selectedPCAreaId: matchedLoc?.pcAreaId || selectedPCAreaId,
+            selectedLocationTitle: matchedLoc?.title || selectedLocationTitle,
+            pressureValue,
+            pressureUnit,
+            latitude: gpsResult.lat,
+            longitude: gpsResult.lng,
+            gpsAccuracy: gpsResult.acc,
+            notes,
+            photoUrl: compressed,
+            photoTag: gpsResult.photoTag || photoTag,
+            autoSyncInfo: gpsResult.autoSyncInfo || autoSyncInfo,
+          };
+          try {
+            const json = JSON.stringify(updatedDraft);
+            sessionStorage.setItem(INSPECTION_DRAFT_KEY, json);
+            localStorage.setItem(INSPECTION_DRAFT_KEY, json);
+          } catch {
+            // ignore
+          }
+        }
+      }).catch(console.warn);
     } catch (err: any) {
       console.error('Error handling native camera capture:', err);
       setCameraError('Gagal memproses foto manometer. Silakan coba lagi.');
@@ -739,38 +688,36 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
     }
   }, [isCapturingCamera]);
 
-  // Live viewfinder snapshot: captures frame and runs GPS update in parallel
+  // Live viewfinder snapshot: captures frame cleanly without watermark
   const takeSnapshot = async () => {
     if (videoRef.current) {
       const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth || 1280;
+      canvas.width = videoRef.current.videoWidth || 960;
       canvas.height = videoRef.current.videoHeight || 720;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        canvas.width = 0;
+        canvas.height = 0;
         stopCamera();
         setIsProcessingPhoto(true);
         try {
-          // Fetch GPS coordinates and automatically match & choose saved area
-          const gpsResult = await getCurrentGPSLocation(true);
-          const coords = { lat: gpsResult.lat, lng: gpsResult.lng, acc: gpsResult.acc };
-          const watermarked = await processAndWatermarkPhoto(dataUrl, coords, gpsResult.photoTag);
-          if (watermarked) {
-            setPhotoUrl(watermarked);
-            const matchedLoc = gpsResult.matchedLoc;
+          const compressed = await safeCompressPhoto(dataUrl);
+          if (compressed) {
+            setPhotoUrl(compressed);
             const draftData = {
-              selectedPCAreaId: matchedLoc?.pcAreaId || selectedPCAreaId,
-              selectedLocationTitle: matchedLoc?.title || selectedLocationTitle,
+              selectedPCAreaId,
+              selectedLocationTitle,
               pressureValue,
               pressureUnit,
-              latitude: gpsResult.lat,
-              longitude: gpsResult.lng,
-              gpsAccuracy: gpsResult.acc,
+              latitude,
+              longitude,
+              gpsAccuracy,
               notes,
-              photoUrl: watermarked,
-              photoTag: gpsResult.photoTag || photoTag,
-              autoSyncInfo: gpsResult.autoSyncInfo || autoSyncInfo,
+              photoUrl: compressed,
+              photoTag,
+              autoSyncInfo,
             };
             try {
               const json = JSON.stringify(draftData);
@@ -780,8 +727,35 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
               // ignore
             }
           }
+
+          // Asynchronously update GPS in background
+          getCurrentGPSLocation(true).then((gpsResult) => {
+            if (gpsResult && gpsResult.lat) {
+              const matchedLoc = gpsResult.matchedLoc;
+              const updated = {
+                selectedPCAreaId: matchedLoc?.pcAreaId || selectedPCAreaId,
+                selectedLocationTitle: matchedLoc?.title || selectedLocationTitle,
+                pressureValue,
+                pressureUnit,
+                latitude: gpsResult.lat,
+                longitude: gpsResult.lng,
+                gpsAccuracy: gpsResult.acc,
+                notes,
+                photoUrl: compressed,
+                photoTag: gpsResult.photoTag || photoTag,
+                autoSyncInfo: gpsResult.autoSyncInfo || autoSyncInfo,
+              };
+              try {
+                const json = JSON.stringify(updated);
+                sessionStorage.setItem(INSPECTION_DRAFT_KEY, json);
+                localStorage.setItem(INSPECTION_DRAFT_KEY, json);
+              } catch {
+                // ignore
+              }
+            }
+          }).catch(console.warn);
         } catch (err) {
-          console.error('Error watermarking snapshot:', err);
+          console.error('Error processing snapshot:', err);
         } finally {
           setIsProcessingPhoto(false);
         }
@@ -899,13 +873,14 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Hidden Native Camera Input for Direct Android/iOS Camera Launch */}
+      {/* Hidden Native Camera Input for Direct Android/iOS Camera Launch (Restricted strictly to camera, disallowing internal storage) */}
       <input
         ref={nativeCameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
         onChange={handleNativeCameraCapture}
+        onClick={(e) => e.stopPropagation()}
         className="hidden"
       />
 
@@ -970,10 +945,10 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
                   <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-300 bg-slate-950/90 z-20">
                     <Loader2 className="w-8 h-8 text-sky-400 animate-spin mb-3" />
                     <p className="text-xs font-bold text-white mb-1">
-                      Memproses Foto &amp; Watermark GPS...
+                      Memproses Foto Manometer...
                     </p>
                     <p className="text-[11px] text-slate-400 max-w-xs">
-                      Mengompresi dan menyematkan koordinat serta waktu secara aman.
+                      Mengompresi dan menyiapkan foto secara aman tanpa lag memori.
                     </p>
                   </div>
                 ) : isCapturingCamera ? (
@@ -1015,14 +990,8 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
                       className="w-full h-full object-cover"
                     />
 
-                    {/* Watermark Otomatis Badge */}
-                    <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-md text-[10px] text-white font-medium flex items-center space-x-1.5 border border-white/20">
-                      <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Watermark Otomatis Tersemat</span>
-                    </div>
-
-                    {/* Bottom HUD Metadata Overlay on Photo */}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-3 pt-6 text-white font-mono text-[11px] leading-tight">
+                    {/* Bottom Info Bar */}
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent p-3 pt-6 text-white font-mono text-[11px] leading-tight">
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
                           <p className="font-bold text-sky-300">
@@ -1051,37 +1020,44 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
                       <Camera className="w-7 h-7" />
                     </div>
                     <p className="text-xs font-bold text-white mb-1 group-hover:text-sky-300 transition-colors">
-                      Buka Kamera
+                      Buka Kamera HP Langsung
                     </p>
                     <p className="text-[11px] text-slate-400 max-w-xs leading-relaxed">
-                      Ketuk di sini atau gunakan tombol di bawah untuk membuka kamera perangkat Anda dan memotret jarum manometer secara langsung.
+                      Ketuk di sini untuk langsung mengaktifkan kamera ponsel Anda (khusus foto riil langsung di lapangan, penyimpanan galeri dinonaktifkan).
                     </p>
+                    <div className="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
+                      <ShieldCheck className="w-3 h-3" />
+                      <span>Kamera Langsung Lapangan</span>
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* Action Buttons: Native Camera */}
-              <div className="mt-4">
-                <button
-                  type="button"
-                  disabled={isProcessingPhoto}
-                  onClick={() => nativeCameraInputRef.current?.click()}
-                  className="w-full py-3 px-4 bg-[#00162d] hover:bg-[#00274e] disabled:opacity-60 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition-all shadow-md shadow-slate-900/10 cursor-pointer"
-                >
-                  {isProcessingPhoto ? (
-                    <>
-                      <Loader2 className="w-4 h-4 text-sky-400 animate-spin" />
-                      <span>Memproses Foto...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Camera className="w-4 h-4 text-sky-400" />
-                      <span>
-                        {photoUrl ? 'Ambil Ulang (Kamera HP / Perangkat)' : 'Ambil Foto (Kamera HP / Perangkat)'}
-                      </span>
-                    </>
-                  )}
-                </button>
+              {/* Action Buttons: Native Camera & Live Viewfinder */}
+              <div className="mt-4 space-y-2">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    disabled={isProcessingPhoto}
+                    onClick={() => nativeCameraInputRef.current?.click()}
+                    className="flex-1 py-3 px-4 bg-[#00162d] hover:bg-[#00274e] disabled:opacity-60 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition-all shadow-md shadow-slate-900/10 cursor-pointer"
+                  >
+                    {isProcessingPhoto ? (
+                      <>
+                        <Loader2 className="w-4 h-4 text-sky-400 animate-spin" />
+                        <span>Memproses Foto...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="w-4 h-4 text-sky-400" />
+                        <span>
+                          {photoUrl ? 'Ambil Ulang (Kamera HP Langsung)' : 'Buka Kamera HP Langsung'}
+                        </span>
+                      </>
+                    )}
+                  </button>
+
+                </div>
 
                 {photoUrl && !isProcessingPhoto && (
                   <button
@@ -1090,7 +1066,7 @@ export const InspectionInputView: React.FC<InspectionInputViewProps> = ({
                       setPhotoUrl('');
                       saveDraft('');
                     }}
-                    className="mt-2 w-full py-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                    className="w-full py-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                   >
                     Hapus Foto Ini
                   </button>

@@ -66,17 +66,18 @@ export default function App() {
     'dashboard' | 'input' | 'leakage' | 'master' | 'profile'
   >(() => {
     try {
-      const savedTab = sessionStorage.getItem('network_inspector_active_tab');
+      const savedTab = sessionStorage.getItem('network_inspector_active_tab') || localStorage.getItem('network_inspector_active_tab');
       return (savedTab as any) || 'dashboard';
     } catch {
       return 'dashboard';
     }
   });
 
-  // Keep active tab in sessionStorage so mobile camera backgrounding returns to same tab
+  // Keep active tab in sessionStorage and localStorage so mobile camera backgrounding returns to same tab
   useEffect(() => {
     try {
       sessionStorage.setItem('network_inspector_active_tab', currentTab);
+      localStorage.setItem('network_inspector_active_tab', currentTab);
     } catch {
       // ignore
     }
@@ -107,7 +108,9 @@ export default function App() {
     useState<PressureThresholdConfig>(DEFAULT_PRESSURE_THRESHOLDS);
   const [lang, setLang] = useState<'ID' | 'EN'>('ID');
 
-  // Modals state
+  // Modals & Editing state
+  const [editingLeakageRecord, setEditingLeakageRecord] =
+    useState<NetworkLeakageRecord | null>(null);
   const [selectedRecordForDetail, setSelectedRecordForDetail] =
     useState<InspectionRecord | null>(null);
   const [showCADModal, setShowCADModal] = useState<boolean>(false);
@@ -337,6 +340,16 @@ export default function App() {
     }
   };
 
+  const handleSyncPCAreasFromShapefile = async () => {
+    try {
+      const synced = await firebaseService.syncPCAreasFromShapefile();
+      setPCAreas(synced);
+    } catch (err) {
+      console.error('Error syncing PC Areas from shapefile:', err);
+      throw err;
+    }
+  };
+
   // Repair Materials CRUD
   const handleAddMaterial = async (mat: Omit<RepairMaterial, 'id' | 'createdAt'>) => {
     try {
@@ -379,7 +392,7 @@ export default function App() {
     }
   };
 
-  // Network Distribution Leakage Record Handler
+  // Network Distribution Leakage Record Handlers
   const handleAddLeakageRecord = async (
     record: Omit<NetworkLeakageRecord, 'id' | 'timestamp' | 'createdAt'>
   ) => {
@@ -387,6 +400,43 @@ export default function App() {
       await firebaseService.addLeakageRecord(record);
     } catch (err) {
       console.error('Error adding network leakage record:', err);
+    }
+  };
+
+  const handleUpdateLeakageRecord = async (record: NetworkLeakageRecord) => {
+    try {
+      await firebaseService.updateLeakageRecord(record);
+      setEditingLeakageRecord(null);
+      setCurrentTab('dashboard');
+    } catch (err) {
+      console.error('Error updating network leakage record:', err);
+    }
+  };
+
+  const handleDeleteLeakageRecord = async (id: string) => {
+    try {
+      await firebaseService.deleteLeakageRecord(id);
+    } catch (err) {
+      console.error('Error deleting network leakage record:', err);
+    }
+  };
+
+  // Pressure Inspection Record Handlers
+  const handleUpdateInspection = async (record: InspectionRecord) => {
+    try {
+      await firebaseService.updateInspection(record);
+      setSelectedRecordForDetail(record);
+    } catch (err) {
+      console.error('Error updating inspection record:', err);
+    }
+  };
+
+  const handleDeleteInspection = async (id: string) => {
+    try {
+      await firebaseService.deleteInspection(id);
+      setSelectedRecordForDetail(null);
+    } catch (err) {
+      console.error('Error deleting inspection record:', err);
     }
   };
 
@@ -493,6 +543,13 @@ export default function App() {
               onViewDetail={(record) => setSelectedRecordForDetail(record)}
               onOpenCADModal={() => setShowCADModal(true)}
               onShowCalibrationSchedule={() => setShowCalibrationModal(true)}
+              onEditLeakageRecord={(rec) => {
+                setEditingLeakageRecord(rec);
+                setCurrentTab('leakage');
+              }}
+              onDeleteLeakageRecord={handleDeleteLeakageRecord}
+              onUpdateInspection={handleUpdateInspection}
+              onDeleteInspection={handleDeleteInspection}
             />
           )}
 
@@ -511,8 +568,15 @@ export default function App() {
             <NetworkLeakageInputView
               materials={materials}
               currentUser={currentUser}
+              pcAreas={pcAreas}
+              editingRecord={editingLeakageRecord}
               onSaveRecord={handleAddLeakageRecord}
-              onNavigateToDashboard={() => setCurrentTab('dashboard')}
+              onUpdateRecord={handleUpdateLeakageRecord}
+              onCancelEdit={() => setEditingLeakageRecord(null)}
+              onNavigateToDashboard={() => {
+                setEditingLeakageRecord(null);
+                setCurrentTab('dashboard');
+              }}
               onNavigateToMasterData={() => setCurrentTab('master')}
             />
           )}
@@ -530,6 +594,7 @@ export default function App() {
               onAddPCArea={handleAddPCArea}
               onUpdatePCArea={handleUpdatePCArea}
               onDeletePCArea={handleDeletePCArea}
+              onSyncPCAreasFromShapefile={handleSyncPCAreasFromShapefile}
               onAddMaterial={handleAddMaterial}
               onUpdateMaterial={handleUpdateMaterial}
               onDeleteMaterial={handleDeleteMaterial}
@@ -571,7 +636,10 @@ export default function App() {
       {/* Detail Inspection Modal */}
       <InspectionDetailModal
         record={selectedRecordForDetail}
+        currentUser={currentUser}
         onClose={() => setSelectedRecordForDetail(null)}
+        onUpdateInspection={handleUpdateInspection}
+        onDeleteInspection={handleDeleteInspection}
       />
 
       {/* CAD Schematic Modal */}

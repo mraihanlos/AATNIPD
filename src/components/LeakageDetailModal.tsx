@@ -9,18 +9,27 @@ import {
   Package,
   FileText,
   Maximize2,
+  Edit2,
+  Trash2,
+  ShieldCheck,
 } from 'lucide-react';
-import { NetworkLeakageRecord, PCArea } from '../types/index.ts';
+import { NetworkLeakageRecord, PCArea, UserProfile } from '../types/index.ts';
 
 interface LeakageDetailModalProps {
   record: NetworkLeakageRecord | null;
   pcAreas?: PCArea[];
+  currentUser?: UserProfile | null;
   onClose: () => void;
+  onEditRecord?: (record: NetworkLeakageRecord) => void;
+  onDeleteRecord?: (id: string) => void;
 }
 
 export const LeakageDetailModal: React.FC<LeakageDetailModalProps> = ({
   record,
+  currentUser,
   onClose,
+  onEditRecord,
+  onDeleteRecord,
 }) => {
   const [enlargedPhoto, setEnlargedPhoto] = useState<{ url: string; title: string } | null>(null);
 
@@ -72,6 +81,11 @@ export const LeakageDetailModal: React.FC<LeakageDetailModalProps> = ({
                   <span className="font-mono font-bold text-rose-300 text-sm">
                     {record.id}
                   </span>
+                  {record.zona && (
+                    <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded bg-emerald-800 text-emerald-100 font-bold">
+                      {record.zona}
+                    </span>
+                  )}
                   {record.pcAreaId && (
                     <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded bg-sky-800 text-sky-100 font-bold">
                       {record.pcAreaId}
@@ -239,6 +253,16 @@ export const LeakageDetailModal: React.FC<LeakageDetailModalProps> = ({
                     Laporan Masuk: <strong className="text-slate-700">{record.reportReceivedTime}</strong>
                   </span>
                 )}
+                {record.zona && (
+                  <span>
+                    Zona: <strong className="text-emerald-700">{record.zona}</strong>
+                  </span>
+                )}
+                {record.pcAreaId && (
+                  <span>
+                    Area: <strong className="text-sky-700">{record.pcAreaId}</strong>
+                  </span>
+                )}
               </div>
             </div>
 
@@ -269,8 +293,16 @@ export const LeakageDetailModal: React.FC<LeakageDetailModalProps> = ({
                 </p>
                 {record.mitigationNotes && (
                   <p className="text-slate-500 text-[11px] mt-1.5 italic">
-                    {record.mitigationNotes}
+                    Prosedur Mitigasi: {record.mitigationNotes}
                   </p>
+                )}
+                {record.estimasiNRW && (
+                  <div className="mt-2.5 pt-2 border-t border-emerald-200/60 flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-emerald-800">Estimasi Kehilangan Air (NRW):</span>
+                    <span className="font-mono font-extrabold text-xs text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
+                      💧 {record.estimasiNRW.includes('m³') ? record.estimasiNRW : `${record.estimasiNRW} m³`}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>
@@ -322,16 +354,46 @@ export const LeakageDetailModal: React.FC<LeakageDetailModalProps> = ({
           </div>
 
           {/* Modal Footer */}
-          <div className="p-3 sm:px-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs shrink-0">
+          <div className="p-3 sm:px-6 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
             <span className="text-slate-500 font-mono text-[11px]">
               ID Arsip: {record.id}
             </span>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-[#00162d] hover:bg-[#00274e] text-white font-bold transition-all cursor-pointer shadow-xs"
-            >
-              Tutup
-            </button>
+            <div className="flex items-center space-x-2">
+              {currentUser?.role === 'manager' && onEditRecord && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onEditRecord(record);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold transition-all cursor-pointer shadow-xs flex items-center space-x-1.5"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Edit Data (Manager)</span>
+                </button>
+              )}
+              {currentUser?.role === 'manager' && onDeleteRecord && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm(`Apakah Anda yakin ingin menghapus data laporan #${record.id}?`)) {
+                      onDeleteRecord(record.id);
+                      onClose();
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition-all cursor-pointer shadow-xs flex items-center space-x-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus</span>
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="px-4 py-1.5 rounded-xl bg-[#00162d] hover:bg-[#00274e] text-white font-bold transition-all cursor-pointer shadow-xs"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       </div>
