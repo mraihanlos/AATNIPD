@@ -131,8 +131,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const currentMonthLabel = `${monthNamesID[now.getMonth()]} ${currentYear}`;
 
   // Card 2: Total Titik Inspeksi Hari Ini
-  const todayInspectionsCount = inspections.filter((i) => i.date === todayISO).length;
-  const totalInspectedToday = todayInspectionsCount > 0 ? todayInspectionsCount : inspections.length;
+  const todayInspectionsCount = inspections.filter((i) => {
+    const d = normalizeToISODate(i.date);
+    return d === todayISO;
+  }).length;
+  const totalInspectedToday = todayInspectionsCount;
   const targetPoints = 150;
   const targetPct = Math.min(Math.round((totalInspectedToday / targetPoints) * 100), 100);
 
@@ -256,9 +259,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span className="font-telemetry font-extrabold text-2xl sm:text-3xl text-[#00162d]">
                 {totalInspectedToday}
               </span>
+              <span className="text-xs font-bold text-slate-500 uppercase">TITIK</span>
             </div>
             <div className="flex items-center justify-between mt-2.5 sm:mt-3 text-xs flex-wrap gap-1.5">
-              <span className="text-slate-500 font-medium text-[11px]">Titik telah diinspeksi</span>
+              <span className="text-slate-500 font-medium text-[11px]">
+                {totalInspectedToday > 0 ? 'Titik telah diinspeksi' : 'Belum ada inspeksi hari ini'}
+              </span>
+
             </div>
           </div>
         </div>
