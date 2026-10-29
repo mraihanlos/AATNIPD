@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { InspectionRecord, PCArea } from '../types/index.ts';
+import { normalizeToISODate } from '../constants/monthColors.ts';
 
 interface InspectionHistoryTableProps {
   inspections: InspectionRecord[];
@@ -25,7 +26,7 @@ export const InspectionHistoryTable: React.FC<InspectionHistoryTableProps> = ({
   onExportCSV,
   onViewDetail,
 }) => {
-  const [periodTab, setPeriodTab] = useState<'day' | 'week' | 'month'>('day');
+  const [periodTab, setPeriodTab] = useState<'day' | 'week' | 'month' | 'all'>('day');
   const [selectedPC, setSelectedPC] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -33,12 +34,43 @@ export const InspectionHistoryTable: React.FC<InspectionHistoryTableProps> = ({
 
   // Filter inspections based on criteria
   const filteredRecords = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthPadded = String(now.getMonth() + 1).padStart(2, '0');
+    const currentDayPadded = String(now.getDate()).padStart(2, '0');
+    const todayISO = `${currentYear}-${currentMonthPadded}-${currentDayPadded}`;
+
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgoISO = `${sevenDaysAgo.getFullYear()}-${String(sevenDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(
+      sevenDaysAgo.getDate()
+    ).padStart(2, '0')}`;
+
+    const currentYearMonth = `${currentYear}-${currentMonthPadded}`;
+
     return inspections.filter((item) => {
-      // PC filter
+      // 1. Period filter (Day / Week / Month / All)
+      if (periodTab !== 'all') {
+        const itemISO =
+          normalizeToISODate(item.date) ||
+          (item.timestamp ? normalizeToISODate(new Date(item.timestamp).toISOString()) : '');
+
+        if (itemISO) {
+          if (periodTab === 'day') {
+            if (itemISO !== todayISO) return false;
+          } else if (periodTab === 'week') {
+            if (itemISO < sevenDaysAgoISO || itemISO > todayISO) return false;
+          } else if (periodTab === 'month') {
+            if (!itemISO.startsWith(currentYearMonth)) return false;
+          }
+        }
+      }
+
+      // 2. PC filter
       if (selectedPC !== 'all' && item.pcAreaId !== selectedPC) {
         return false;
       }
-      // Search query
+
+      // 3. Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchTitle = item.locationTitle.toLowerCase().includes(q);
@@ -103,14 +135,14 @@ export const InspectionHistoryTable: React.FC<InspectionHistoryTableProps> = ({
 
         {/* Filter Toolbar */}
         <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-2.5 w-full md:w-auto">
-          {/* Day / Week / Month Toggle */}
-          <div className="grid grid-cols-3 sm:flex items-center bg-slate-100 p-1 rounded-lg text-xs font-semibold w-full sm:w-auto">
+          {/* Day / Week / Month / All Toggle */}
+          <div className="grid grid-cols-4 sm:flex items-center bg-slate-100 p-1 rounded-lg text-xs font-semibold w-full sm:w-auto">
             <button
               onClick={() => {
                 setPeriodTab('day');
                 setCurrentPage(1);
               }}
-              className={`py-1.5 px-2 sm:px-3 text-center rounded-md transition-all text-xs ${
+              className={`py-1.5 px-2 sm:px-3 text-center rounded-md transition-all text-xs cursor-pointer ${
                 periodTab === 'day'
                   ? 'bg-white text-slate-900 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -124,7 +156,7 @@ export const InspectionHistoryTable: React.FC<InspectionHistoryTableProps> = ({
                 setPeriodTab('week');
                 setCurrentPage(1);
               }}
-              className={`py-1.5 px-2 sm:px-3 text-center rounded-md transition-all text-xs ${
+              className={`py-1.5 px-2 sm:px-3 text-center rounded-md transition-all text-xs cursor-pointer ${
                 periodTab === 'week'
                   ? 'bg-white text-slate-900 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -138,7 +170,7 @@ export const InspectionHistoryTable: React.FC<InspectionHistoryTableProps> = ({
                 setPeriodTab('month');
                 setCurrentPage(1);
               }}
-              className={`py-1.5 px-2 sm:px-3 text-center rounded-md transition-all text-xs ${
+              className={`py-1.5 px-2 sm:px-3 text-center rounded-md transition-all text-xs cursor-pointer ${
                 periodTab === 'month'
                   ? 'bg-white text-slate-900 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -146,6 +178,19 @@ export const InspectionHistoryTable: React.FC<InspectionHistoryTableProps> = ({
             >
               <span className="sm:hidden">Bulan</span>
               <span className="hidden sm:inline">Bulan Ini (Month)</span>
+            </button>
+            <button
+              onClick={() => {
+                setPeriodTab('all');
+                setCurrentPage(1);
+              }}
+              className={`py-1.5 px-2 sm:px-3 text-center rounded-md transition-all text-xs cursor-pointer ${
+                periodTab === 'all'
+                  ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>Semua</span>
             </button>
           </div>
 

@@ -267,12 +267,6 @@ export const LeakageHistoryTable: React.FC<LeakageHistoryTableProps> = ({
               <h3 className="font-heading font-bold text-sm sm:text-base text-[#00162d]">
                 Log Riwayat Kebocoran Pipa
               </h3>
-              {currentUser?.role === 'manager' && (
-                <span className="inline-flex items-center space-x-1 bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs">
-                  <ShieldCheck className="w-3 h-3 text-amber-700" />
-                  <span>Akses Manager: Fitur Update Aktif</span>
-                </span>
-              )}
             </div>
             <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
               Catatan berkala laporan kebocoran pipa, status tindakan perbaikan, dan material terpasang.
