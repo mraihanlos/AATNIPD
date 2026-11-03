@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { UserProfile } from '../types/index.ts';
 import { MAN_SILHOUETTE_AVATAR, sanitizeAvatar } from '../constants/avatars.ts';
+import moyaLogoSimpled from '../assets/images/moya-logo-simpled (1).jpg';
 
 interface SidebarProps {
   currentTab: 'dashboard' | 'input' | 'leakage' | 'master' | 'profile';
@@ -65,9 +66,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Brand Header */}
       <div>
         <div className="p-5 flex items-center space-x-3 border-b border-[#0f2b48]/80">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-blue-700 flex items-center justify-center shadow-lg shadow-sky-900/30">
-            <Gauge className="w-6 h-6 text-white" />
-          </div>
+          <img 
+              src={moyaLogoSimpled} 
+              alt="MOYA Logo" 
+              className="h-7 md:h-9 object-contain select-none" 
+              referrerPolicy="no-referrer"
+          />
           <div>
             <h1 className="font-heading font-bold text-base text-white tracking-tight leading-tight flex items-center gap-1.5">
               Network Inspector

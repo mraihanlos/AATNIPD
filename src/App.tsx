@@ -17,6 +17,7 @@ import {
   PressureThresholdConfig,
 } from './types/index.ts';
 import { DEFAULT_PRESSURE_THRESHOLDS, DEFAULT_LEAKAGE_RECORDS, storage } from './services/storage.ts';
+import { exportInspectionsToExcel } from './services/excelExport.ts';
 import {
   MAN_SILHOUETTE_AVATAR,
   WOMAN_SILHOUETTE_AVATAR,
@@ -440,54 +441,13 @@ export default function App() {
     }
   };
 
-  // CSV Export
-  const handleExportCSV = () => {
-    const headers = [
-      'ID Inspeksi',
-      'Tanggal',
-      'Jam (WIB)',
-      'PC Area',
-      'Lokasi Titik',
-      'Tekanan (Bar)',
-      'Tekanan (PSI)',
-      'Status',
-      'Petugas Lapangan',
-      'ID Petugas',
-      'Latitude',
-      'Longitude',
-      'Akurasi GPS (m)',
-      'Foto Watermark Tag',
-      'Catatan Kondisi',
-    ];
-
-    const rows = inspections.map((r) => [
-      r.id,
-      r.date,
-      r.time,
-      r.pcAreaId,
-      `"${r.locationTitle.replace(/"/g, '""')}"`,
-      r.pressureBar.toFixed(2),
-      r.pressurePsi.toFixed(2),
-      r.statusLabel,
-      `"${r.inspectorName.replace(/"/g, '""')}"`,
-      r.inspectorId,
-      r.latitude.toFixed(6),
-      r.longitude.toFixed(6),
-      r.gpsAccuracyMeters.toFixed(1),
-      r.photoTag,
-      `"${(r.notes || '-').replace(/"/g, '""')}"`,
-    ]);
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' +
-      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', 'Laporan_Inspeksi_Tekanan_Pipa_SCADA.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Excel (.xlsx) Export
+  const handleExportExcel = (customRecords?: InspectionRecord[]) => {
+    const targetRecords = customRecords && customRecords.length > 0 ? customRecords : inspections;
+    exportInspectionsToExcel(
+      targetRecords,
+      `Laporan_Inspeksi_Tekanan_Pipa_SCADA_${new Date().toISOString().split('T')[0]}.xlsx`
+    );
   };
 
   if (authChecking) {
@@ -539,7 +499,8 @@ export default function App() {
               currentUser={currentUser}
               onNavigateToInput={() => setCurrentTab('input')}
               onNavigateToLeakage={() => setCurrentTab('leakage')}
-              onExportCSV={handleExportCSV}
+              onExportCSV={handleExportExcel}
+              onExportExcel={handleExportExcel}
               onViewDetail={(record) => setSelectedRecordForDetail(record)}
               onOpenCADModal={() => setShowCADModal(true)}
               onShowCalibrationSchedule={() => setShowCalibrationModal(true)}

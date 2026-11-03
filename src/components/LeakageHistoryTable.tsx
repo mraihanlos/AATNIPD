@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   Download,
+  FileSpreadsheet,
   Eye,
   Search,
   ChevronLeft,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 import { NetworkLeakageRecord, PCArea, InspectionLocation, UserProfile } from '../types/index.ts';
 import { LeakageDetailModal } from './LeakageDetailModal.tsx';
+import { exportLeakagesToExcel } from '../services/excelExport.ts';
 
 interface LeakageHistoryTableProps {
   leakageRecords: NetworkLeakageRecord[];
@@ -18,6 +20,7 @@ interface LeakageHistoryTableProps {
   locations?: InspectionLocation[];
   currentUser?: UserProfile | null;
   onExportCSV?: (records: NetworkLeakageRecord[]) => void;
+  onExportExcel?: (records: NetworkLeakageRecord[]) => void;
   onViewDetail?: (record: NetworkLeakageRecord) => void;
   onEditRecord?: (record: NetworkLeakageRecord) => void;
   onDeleteRecord?: (id: string) => void;
@@ -29,6 +32,7 @@ export const LeakageHistoryTable: React.FC<LeakageHistoryTableProps> = ({
   locations = [],
   currentUser,
   onExportCSV,
+  onExportExcel,
   onViewDetail,
   onEditRecord,
   onDeleteRecord,
@@ -185,57 +189,21 @@ export const LeakageHistoryTable: React.FC<LeakageHistoryTableProps> = ({
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExport = () => {
+    if (onExportExcel) {
+      onExportExcel(filteredRecords);
+      return;
+    }
     if (onExportCSV) {
       onExportCSV(filteredRecords);
       return;
     }
 
-    // Default built-in CSV export for leakage records
-    const headers = [
-      'ID Kebocoran',
-      'Tanggal Pemeriksaan',
-      'Tanggal Perbaikan',
-      'Waktu Perbaikan',
-      'PC Area',
-      'Lokasi Detail',
-      'Tipe Pipa',
-      'Status',
-      'Petugas Pelapor',
-      'Hasil Pemeriksaan',
-      'Tindakan Perbaikan',
-      'Material Digunakan',
-      'Latitude',
-      'Longitude',
-    ];
-
-    const rows = filteredRecords.map((r) => [
-      r.id,
-      r.inspectionDate || '-',
-      r.repairDate || '-',
-      `${r.repairStartTime || '--:--'} - ${r.repairEndTime || '--:--'}`,
-      getRecordPCArea(r),
-      `"${(r.leakLocationDetail || '-').replace(/"/g, '""')}"`,
-      r.pipeType || '-',
-      r.status || 'Selesai',
-      `"${(r.reporterInspector || r.createdBy || '-').replace(/"/g, '""')}"`,
-      `"${(r.physicalInspectionResult || '-').replace(/"/g, '""')}"`,
-      `"${(r.repairActionTaken || '-').replace(/"/g, '""')}"`,
-      `"${(r.materialsUsed?.map((m) => `${m.materialName} (${m.quantity} ${m.unit})`).join('; ') || '-').replace(/"/g, '""')}"`,
-      r.latitude || '',
-      r.longitude || '',
-    ]);
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' +
-      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Log_Kebocoran_Pipa_AETRA_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Direct Excel (.xlsx) export for leakage records
+    exportLeakagesToExcel(
+      filteredRecords,
+      `Log_Kebocoran_Pipa_AETRA_${new Date().toISOString().split('T')[0]}.xlsx`
+    );
   };
 
   const handleRowClick = (item: NetworkLeakageRecord) => {
@@ -357,13 +325,14 @@ export const LeakageHistoryTable: React.FC<LeakageHistoryTableProps> = ({
                 />
               </div>
 
-              {/* CSV Export Button */}
+              {/* Excel Export Button */}
               <button
-                onClick={handleExportCSV}
+                onClick={handleExport}
+                title="Unduh data kebocoran pipa dalam format Excel (.xlsx)"
                 className="w-full sm:w-auto flex items-center justify-center space-x-1.5 bg-[#006591] hover:bg-[#005177] text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
               >
-                <Download className="w-3.5 h-3.5" />
-                <span>Ekspor CSV</span>
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
+                <span>Ekspor Excel</span>
               </button>
             </div>
           </div>

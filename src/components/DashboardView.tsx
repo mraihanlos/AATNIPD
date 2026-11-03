@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   Download,
+  FileSpreadsheet,
   Plus,
   Gauge,
   MapPin,
@@ -32,7 +33,8 @@ interface DashboardViewProps {
   currentUser: UserProfile;
   onNavigateToInput: () => void;
   onNavigateToLeakage?: () => void;
-  onExportCSV: () => void;
+  onExportCSV?: () => void;
+  onExportExcel?: (records?: InspectionRecord[]) => void;
   onViewDetail: (record: InspectionRecord) => void;
   onOpenCADModal: () => void;
   onShowCalibrationSchedule: () => void;
@@ -51,6 +53,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigateToInput,
   onNavigateToLeakage,
   onExportCSV,
+  onExportExcel,
   onViewDetail,
   onOpenCADModal,
   onShowCalibrationSchedule,
@@ -186,11 +189,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Action Buttons */}
         <div className="grid grid-cols-1 sm:flex sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 shrink-0 w-full sm:w-auto">
           <button
-            onClick={onExportCSV}
-            className="w-full sm:w-auto flex items-center justify-center space-x-2 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+            onClick={() => {
+              if (onExportExcel) {
+                onExportExcel();
+              } else if (onExportCSV) {
+                onExportCSV();
+              }
+            }}
+            className="w-full sm:w-auto flex items-center justify-center space-x-2 px-3.5 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100/80 text-emerald-900 text-xs font-bold shadow-2xs transition-all cursor-pointer"
           >
-            <Download className="w-4 h-4 text-slate-600" />
-            <span>Unduh Laporan (CSV)</span>
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Unduh Laporan (Excel)</span>
           </button>
 
           {onNavigateToLeakage && (
@@ -480,19 +489,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      {/* Quality Distribution & PC Health Section */}
-      <div className="w-full">
-        <QualityDistributionCard
-          pcAreas={pcAreas}
-          inspections={inspections}
-        />
-      </div>
-
       {/* Bottom Section 1: Inspection History Table */}
       <InspectionHistoryTable
         inspections={inspections}
         pcAreas={pcAreas}
         onExportCSV={onExportCSV}
+        onExportExcel={onExportExcel}
         onViewDetail={onViewDetail}
       />
 

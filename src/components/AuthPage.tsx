@@ -23,6 +23,7 @@ import { auth, googleProvider } from '../services/firebase.ts';
 import { firebaseService } from '../services/firebaseService.ts';
 import { storage } from '../services/storage.ts';
 import { UserProfile, UserRole } from '../types/index.ts';
+import moyaLogoSimpled from '../assets/images/moya-logo-simpled (1).jpg';
 import {
   OFFICIAL_SILHOUETTE_AVATAR,
   getSilhouetteAvatar,
@@ -202,14 +203,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
         <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-5 sm:p-8">
           {/* Header */}
           <div className="flex flex-col items-center text-center mb-6">
-            <div className="w-12 h-12 rounded-xl bg-[#00162d] flex items-center justify-center p-2 mb-3 shadow-md shadow-sky-950/20">
-              <Gauge className="w-7 h-7 text-sky-400" />
-            </div>
+          <img 
+              src={moyaLogoSimpled} 
+              alt="MOYA Logo" 
+              className="h-7 md:h-9 object-contain select-none" 
+              referrerPolicy="no-referrer"
+            />
             <h1 className="font-heading font-extrabold text-2xl text-[#00162d] tracking-tight">
-              Network Inspector
+              Network Inspector Dashboard
             </h1>
             <p className="text-xs text-slate-500 mt-1 font-medium">
-              Sistem Pemantauan & Analisis Tekanan Pipa
+              Sistem Pemantauan Tekanan dan Kebocoran Pipa
             </p>
           </div>
 

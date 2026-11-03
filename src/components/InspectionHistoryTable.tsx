@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   Download,
+  FileSpreadsheet,
   Eye,
   Filter,
   ChevronLeft,
@@ -12,11 +13,13 @@ import {
 } from 'lucide-react';
 import { InspectionRecord, PCArea } from '../types/index.ts';
 import { normalizeToISODate } from '../constants/monthColors.ts';
+import { exportInspectionsToExcel } from '../services/excelExport.ts';
 
 interface InspectionHistoryTableProps {
   inspections: InspectionRecord[];
   pcAreas: PCArea[];
-  onExportCSV: () => void;
+  onExportCSV?: () => void;
+  onExportExcel?: (records?: InspectionRecord[]) => void;
   onViewDetail: (record: InspectionRecord) => void;
 }
 
@@ -24,6 +27,7 @@ export const InspectionHistoryTable: React.FC<InspectionHistoryTableProps> = ({
   inspections,
   pcAreas,
   onExportCSV,
+  onExportExcel,
   onViewDetail,
 }) => {
   const [periodTab, setPeriodTab] = useState<'day' | 'week' | 'month' | 'all'>('day');
@@ -87,6 +91,19 @@ export const InspectionHistoryTable: React.FC<InspectionHistoryTableProps> = ({
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
+
+  const handleExport = () => {
+    if (onExportExcel) {
+      onExportExcel(filteredRecords);
+    } else if (onExportCSV) {
+      onExportCSV();
+    } else {
+      exportInspectionsToExcel(
+        filteredRecords,
+        `Laporan_Inspeksi_Tekanan_${periodTab}_${new Date().toISOString().split('T')[0]}.xlsx`
+      );
+    }
+  };
 
   const getStatusBadge = (status: string, label: string) => {
     switch (status) {
@@ -228,13 +245,14 @@ export const InspectionHistoryTable: React.FC<InspectionHistoryTableProps> = ({
               />
             </div>
 
-            {/* CSV Export Button */}
+            {/* Excel Export Button */}
             <button
-              onClick={onExportCSV}
+              onClick={handleExport}
+              title="Unduh data tabel dalam format Excel (.xlsx)"
               className="w-full sm:w-auto flex items-center justify-center space-x-1.5 bg-[#006591] hover:bg-[#005177] text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>Ekspor CSV</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Ekspor Excel</span>
             </button>
           </div>
         </div>

@@ -384,7 +384,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         2. Manager (Administrator Sistem SCADA)
                       </span>
                       <p className="text-slate-500 text-[11px]">
-                        Memiliki wewenang mengelola master data PC Area dan koordinat lokasi geofence, memantau sebaran kualitas hidrolik, dan mengunduh laporan ekspor CSV.
+                        Memiliki wewenang mengelola master data PC Area dan koordinat lokasi geofence, memantau sebaran kualitas hidrolik, dan mengunduh laporan ekspor Excel (.xlsx).
                       </p>
                     </div>
                   </div>

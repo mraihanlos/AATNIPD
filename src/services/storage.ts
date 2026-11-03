@@ -11,6 +11,7 @@ import {
   PressureThresholdConfig,
 } from '../types/index.ts';
 import { MAN_SILHOUETTE_AVATAR, WOMAN_SILHOUETTE_AVATAR, sanitizeAvatar } from '../constants/avatars.ts';
+import { exportInspectionsToExcel } from './excelExport.ts';
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: UserNotificationPreferences = {
   alertSurge: true,
@@ -576,51 +577,13 @@ export const storage = {
     this.saveInspections(items);
   },
 
-  exportToCSV(records: InspectionRecord[], filename = 'Laporan_Inspeksi_Tekanan_Pipa.csv') {
-    const headers = [
-      'ID Inspeksi',
-      'Tanggal',
-      'Jam (WIB)',
-      'PC Area',
-      'Lokasi Titik',
-      'Tekanan (Bar)',
-      'Tekanan (PSI)',
-      'Status',
-      'Petugas Lapangan',
-      'ID Petugas',
-      'Latitude',
-      'Longitude',
-      'Akurasi GPS (m)',
-      'Foto Watermark Tag',
-      'Catatan Kondisi',
-    ];
+  exportToExcel(records: InspectionRecord[], filename = 'Laporan_Inspeksi_Tekanan_Pipa.xlsx') {
+    exportInspectionsToExcel(records, filename);
+  },
 
-    const rows = records.map(r => [
-      r.id,
-      r.date,
-      r.time,
-      r.pcAreaId,
-      `"${r.locationTitle.replace(/"/g, '""')}"`,
-      r.pressureBar.toFixed(2),
-      r.pressurePsi.toFixed(2),
-      r.statusLabel,
-      `"${r.inspectorName.replace(/"/g, '""')}"`,
-      r.inspectorId,
-      r.latitude.toFixed(6),
-      r.longitude.toFixed(6),
-      r.gpsAccuracyMeters.toFixed(1),
-      r.photoTag,
-      `"${(r.notes || '-').replace(/"/g, '""')}"`,
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Retain exportToCSV pointing to Excel export for backwards compatibility
+  exportToCSV(records: InspectionRecord[], filename = 'Laporan_Inspeksi_Tekanan_Pipa.xlsx') {
+    exportInspectionsToExcel(records, filename);
   },
 };
 
