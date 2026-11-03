@@ -573,7 +573,7 @@ export const LeakReportFormView: React.FC<LeakReportFormViewProps> = ({
           </h2>
           <p className="text-xs sm:text-sm text-slate-600 mt-1.5 max-w-4xl leading-relaxed">
             Dokumentasi resmi berita acara penanganan kebocoran pipa transmisi & distribusi, perekaman foto lapangan
-            sebelum & setelah perbaikan, koordinat GPS, serta alokasi material suku cadang PT Aetra Air Tangerang.
+            setelah perbaikan, koordinat GPS, serta alokasi material perbaikan PT Aetra Air Tangerang.
           </p>
         </div>
 

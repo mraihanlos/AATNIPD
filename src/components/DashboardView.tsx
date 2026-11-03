@@ -174,15 +174,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex items-center space-x-2 mb-1">
             <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-sm bg-sky-100 text-sky-800">
               Operasional Wilayah Aetra Air Tangerang
-            </span>
-            <span className="text-xs text-slate-400 font-mono">REV. 2025.02</span>
+            </span>         
           </div>
           <h2 className="font-heading font-extrabold text-xl sm:text-2xl text-[#00162d] tracking-tight">
             Ringkasan Tekanan Jaringan Pipa
           </h2>
           <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-3xl">
-            Pantau metrik tekanan fluida, riwayat inspeksi lapangan, dan anomali distribusi
-            hidrologis secara real-time.
+            Pencatatan tekanan pelanggan, riwayat inspeksi lapangan, dan anomali distribusi.
           </p>
         </div>
 

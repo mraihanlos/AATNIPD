@@ -99,7 +99,7 @@ export const LeakHistoryView: React.FC<LeakHistoryViewProps> = ({
             Riwayat Perawatan &amp; Perbaikan Kebocoran Pipa
           </h2>
           <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-3xl">
-            Arsip digital berita acara penanganan kebocoran, verifikasi foto dokumentasi sebelum &amp; setelah,
+            Arsip digital berita acara penanganan kebocoran, verifikasi foto dokumentasi setelah perbaikan,
             koordinat GPS, serta alokasi material perbaikan PT Aetra Air Tangerang.
           </p>
         </div>
