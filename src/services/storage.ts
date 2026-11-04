@@ -13,6 +13,11 @@ import {
 import { MAN_SILHOUETTE_AVATAR, WOMAN_SILHOUETTE_AVATAR, sanitizeAvatar } from '../constants/avatars.ts';
 import { exportInspectionsToExcel } from './excelExport.ts';
 
+const getRelativeDateISO = (daysAgo: number): string => {
+  const d = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export const DEFAULT_NOTIFICATION_PREFERENCES: UserNotificationPreferences = {
   alertSurge: true,
   alertPatrol: true,
@@ -202,8 +207,8 @@ export const DEFAULT_LOCATIONS: InspectionLocation[] = [
 
 export const DEFAULT_INSPECTIONS: InspectionRecord[] = [
   {
-    id: 'INSP-2025-0891',
-    date: '2025-10-24',
+    id: 'INSP-2026-0891',
+    date: getRelativeDateISO(0),
     time: '14:15',
     timestamp: Date.now() - 15 * 60 * 1000,
     pcAreaId: 'PC 2',
@@ -226,10 +231,10 @@ export const DEFAULT_INSPECTIONS: InspectionRecord[] = [
     notes: 'Kondisi jarum stabil tanpa vibrasi getaran berlebih, paking katup kering tanpa rembesan oli/air.',
   },
   {
-    id: 'INSP-2025-0890',
-    date: '2025-10-24',
+    id: 'INSP-2026-0890',
+    date: getRelativeDateISO(1),
     time: '13:58',
-    timestamp: Date.now() - 32 * 60 * 1000,
+    timestamp: Date.now() - 25 * 60 * 60 * 1000,
     pcAreaId: 'PC 3',
     locationId: 'LOC-PC3-04',
     locationTitle: 'Manifold Utama Tomang Ring-1',
@@ -250,8 +255,8 @@ export const DEFAULT_INSPECTIONS: InspectionRecord[] = [
     notes: 'Terdeteksi penurunan tekanan minor di sub-jalur barat, rekomendasikan pengecekan katup PRV cabang.',
   },
   {
-    id: 'INSP-2025-0889',
-    date: '2025-10-24',
+    id: 'INSP-2026-0889',
+    date: getRelativeDateISO(2),
     time: '13:42',
     timestamp: Date.now() - 48 * 60 * 1000,
     pcAreaId: 'PC 1',
@@ -274,10 +279,10 @@ export const DEFAULT_INSPECTIONS: InspectionRecord[] = [
     notes: 'Tekanan optimal sesuai kurva hidrolik jam beban puncak siang hari.',
   },
   {
-    id: 'INSP-2025-0888',
-    date: '2025-10-24',
+    id: 'INSP-2026-0888',
+    date: getRelativeDateISO(3),
     time: '12:50',
-    timestamp: Date.now() - 100 * 60 * 1000,
+    timestamp: Date.now() - 72 * 60 * 1000,
     pcAreaId: 'PC 5',
     locationId: 'LOC-PC5-03',
     locationTitle: 'Conduit Marunda Gate Valve-02',
@@ -298,10 +303,10 @@ export const DEFAULT_INSPECTIONS: InspectionRecord[] = [
     notes: 'Kondisi katup pesisir terlumasi baik, proteksi katodik korosi aktif.',
   },
   {
-    id: 'INSP-2025-0887',
-    date: '2025-10-24',
+    id: 'INSP-2026-0887',
+    date: getRelativeDateISO(4),
     time: '11:20',
-    timestamp: Date.now() - 190 * 60 * 1000,
+    timestamp: Date.now() - 96 * 60 * 1000,
     pcAreaId: 'PC 4',
     locationId: 'LOC-PC4-08',
     locationTitle: 'Flange Pipa Kawasan Pulogadung',
@@ -722,14 +727,6 @@ export const DEFAULT_REPAIR_MATERIALS: RepairMaterial[] = [
     createdAt: '2025-01-10',
   },
 ];
-
-const getRelativeDateISO = (daysAgo: number): string => {
-  const d = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
 
 // Sample default leakage records matching Image 1 (1).jpg with relative dates for dynamic Day/Week/Month testing
 export const DEFAULT_LEAKAGE_RECORDS: NetworkLeakageRecord[] = [

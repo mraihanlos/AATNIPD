@@ -220,113 +220,165 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      {/* 4 Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* Card 1: Rata - Rata tekanan Jaringan */}
-        <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Rata - Rata tekanan Jaringan
+      {/* 4 Summary KPI Cards Grouped into 2 Distinct Functional Sections */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Left Section: Rekap Pencatatan Tekanan Jaringan*/}
+        <div className="bg-gradient-to-br from-sky-50/70 via-white to-white rounded-2xl border-2 border-sky-200 p-5 shadow-sm space-y-4 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-sky-100/40 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
+          
+          <div className="flex items-center justify-between pb-3 border-b border-sky-100 relative z-10">
+            <div className="flex items-center space-x-3">
+              <div className="p-2.5 rounded-xl bg-sky-600 text-white shadow-sm">
+                <Gauge className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] font-extrabold tracking-wider uppercase px-2 py-0.5 rounded-md bg-sky-100 text-sky-800">
+                  Fungsi 1: Inspeksi Tekanan
+                </span>
+                <h3 className="font-heading font-bold text-base text-[#00162d] mt-0.5">
+                  Rekap Pencatatan Tekanan Jaringan
+                </h3>
+              </div>
+            </div>
+            <span className="text-xs font-semibold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200">
+              2 Parameter
             </span>
-            <div className="p-2 rounded-lg bg-sky-50 text-sky-700 shrink-0">
-              <Gauge className="w-4 h-4" />
-            </div>
           </div>
-          <div className="mt-3 sm:mt-4">
-            <div className="flex items-baseline space-x-2">
-              <span className="font-telemetry font-extrabold text-2xl sm:text-3xl text-[#00162d]">
-                {avgPressure.toFixed(2)}
-              </span>
-              <span className="text-xs font-bold text-slate-500 uppercase">BAR</span>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 relative z-10">
+            {/* Card 1: Rata - Rata tekanan Jaringan */}
+            <div className="bg-white rounded-xl p-4 border border-sky-100 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Rata - Rata Tekanan Jaringan
+                </span>
+                <div className="p-1.5 rounded-lg bg-sky-50 text-sky-700 shrink-0">
+                  <Gauge className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="flex items-baseline space-x-2">
+                  <span className="font-telemetry font-extrabold text-2xl sm:text-3xl text-[#00162d]">
+                    {avgPressure.toFixed(2)}
+                  </span>
+                  <span className="text-xs font-bold text-slate-500 uppercase">BAR</span>
+                </div>
+                <div className="flex items-center justify-between mt-2.5 text-xs flex-wrap gap-1.5">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200 text-[10px]">
+                    Optimal / Normal
+                  </span>
+                  <span className="text-emerald-600 font-semibold flex items-center font-mono text-[10px]">
+                    <TrendingUp className="w-3 h-3 mr-0.5" />
+                    +0.12 Bar
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center justify-between mt-2.5 sm:mt-3 text-xs flex-wrap gap-1.5">
-              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200 text-[11px]">
-                Optimal / Normal
-              </span>
-              <span className="text-emerald-600 font-semibold flex items-center font-mono text-[11px]">
-                <TrendingUp className="w-3 h-3 mr-0.5" />
-                +0.12 Bar
-              </span>
+
+            {/* Card 2: Total Titik inspeksi hari ini */}
+            <div className="bg-white rounded-xl p-4 border border-sky-100 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Total Titik Inspeksi Hari Ini
+                </span>
+                <div className="p-1.5 rounded-lg bg-sky-50 text-sky-700 shrink-0">
+                  <MapPin className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="flex items-baseline space-x-2">
+                  <span className="font-telemetry font-extrabold text-2xl sm:text-3xl text-[#00162d]">
+                    {totalInspectedToday}
+                  </span>
+                  <span className="text-xs font-bold text-slate-500 uppercase">TITIK</span>
+                </div>
+                <div className="flex items-center justify-between mt-2.5 text-xs flex-wrap gap-1.5">
+                  <span className="text-slate-500 font-medium text-[10px]">
+                    {totalInspectedToday > 0 ? 'Titik telah diinspeksi' : 'Belum ada inspeksi hari ini'}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Card 2: Total Titik inspeksi hari ini */}
-        <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Total Titik inspeksi hari ini
-            </span>
-            <div className="p-2 rounded-lg bg-sky-50 text-sky-700 shrink-0">
-              <MapPin className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 sm:mt-4">
-            <div className="flex items-baseline space-x-2">
-              <span className="font-telemetry font-extrabold text-2xl sm:text-3xl text-[#00162d]">
-                {totalInspectedToday}
-              </span>
-              <span className="text-xs font-bold text-slate-500 uppercase">TITIK</span>
-            </div>
-            <div className="flex items-center justify-between mt-2.5 sm:mt-3 text-xs flex-wrap gap-1.5">
-              <span className="text-slate-500 font-medium text-[11px]">
-                {totalInspectedToday > 0 ? 'Titik telah diinspeksi' : 'Belum ada inspeksi hari ini'}
-              </span>
+        {/* Right Section: Rekap Pencatatan Penanganan Kebocoran */}
+        <div className="bg-gradient-to-br from-amber-50/70 via-white to-white rounded-2xl border-2 border-amber-200 p-5 shadow-sm space-y-4 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-100/40 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
 
+          <div className="flex items-center justify-between pb-3 border-b border-amber-100 relative z-10">
+            <div className="flex items-center space-x-3">
+              <div className="p-2.5 rounded-xl bg-amber-600 text-white shadow-sm">
+                <Wrench className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] font-extrabold tracking-wider uppercase px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
+                  Fungsi 2: Pencatatan Kebocoran
+                </span>
+                <h3 className="font-heading font-bold text-base text-[#00162d] mt-0.5">
+                  Rekap Pencatatan Penanganan Kebocoran
+                </h3>
+              </div>
             </div>
-          </div>
-        </div>
-
-        {/* Card 3: Total Kebocoran Bulan Ini */}
-        <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Total Kebocoran Bulan Ini
+            <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+              2 Parameter
             </span>
-            <div className="p-2 rounded-lg bg-rose-50 text-rose-700 shrink-0">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
           </div>
-          <div className="mt-3 sm:mt-4">
-            <div className="flex items-baseline space-x-2">
-              <span className="font-telemetry font-extrabold text-2xl sm:text-3xl text-rose-600">
-                {leaksThisMonth}
-              </span>
-              <span className="text-xs font-bold text-slate-500 uppercase">KASUS</span>
-            </div>
-            <div className="flex items-center justify-between mt-2.5 sm:mt-3 text-xs flex-wrap gap-1.5">
-              <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-semibold border border-rose-200 text-[11px]">
-                {currentMonthLabel}
-              </span>
-              <span className="text-slate-500 font-medium text-[11px]">
-                {leaksThisMonth > 0 ? 'Dalam Penanganan' : 'Nihil Kebocoran'}
-              </span>
-            </div>
-          </div>
-        </div>
 
-        {/* Card 4: Total Kebocoran Terlapor */}
-        <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Total Kebocoran Terlapor
-            </span>
-            <div className="p-2 rounded-lg bg-amber-50 text-amber-700 shrink-0">
-              <Wrench className="w-4 h-4" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 relative z-10">
+            {/* Card 3: Total Kebocoran Bulan Ini */}
+            <div className="bg-white rounded-xl p-4 border border-amber-100 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Total Kebocoran Bulan Ini
+                </span>
+                <div className="p-1.5 rounded-lg bg-rose-50 text-rose-700 shrink-0">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="flex items-baseline space-x-2">
+                  <span className="font-telemetry font-extrabold text-2xl sm:text-3xl text-rose-600">
+                    {leaksThisMonth}
+                  </span>
+                  <span className="text-xs font-bold text-slate-500 uppercase">KASUS</span>
+                </div>
+                <div className="flex items-center justify-between mt-2.5 text-xs flex-wrap gap-1.5">
+                  <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-semibold border border-rose-200 text-[10px]">
+                    {currentMonthLabel}
+                  </span>
+                  <span className="text-slate-500 font-medium text-[10px]">
+                    {leaksThisMonth > 0 ? 'Dalam Penanganan' : 'Nihil Kebocoran'}
+                  </span>
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="mt-3 sm:mt-4">
-            <div className="flex items-baseline space-x-2">
-              <span className="font-telemetry font-extrabold text-2xl sm:text-3xl text-amber-600">
-                {totalLeaksReported}
-              </span>
-              <span className="text-xs font-bold text-slate-500 uppercase">TITIK TERDATA</span>
-            </div>
-            <div className="flex items-center justify-between mt-2.5 sm:mt-3 text-xs flex-wrap gap-1.5">
-              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200 text-[11px]">
-                {completedLeaks} Selesai Tertangani
-              </span>
-              <span className="text-slate-500 font-medium text-[11px]">Histori Terdata</span>
+
+            {/* Card 4: Total Kebocoran Terlapor */}
+            <div className="bg-white rounded-xl p-4 border border-amber-100 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Total Kebocoran Terlapor
+                </span>
+                <div className="p-1.5 rounded-lg bg-amber-50 text-amber-700 shrink-0">
+                  <Wrench className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="flex items-baseline space-x-2">
+                  <span className="font-telemetry font-extrabold text-2xl sm:text-3xl text-amber-600">
+                    {totalLeaksReported}
+                  </span>
+                  <span className="text-xs font-bold text-slate-500 uppercase">TITIK TERDATA</span>
+                </div>
+                <div className="flex items-center justify-between mt-2.5 text-xs flex-wrap gap-1.5">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200 text-[10px]">
+                    {completedLeaks} Selesai Tertangani
+                  </span>
+                  <span className="text-slate-500 font-medium text-[10px]">Histori Terdata</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
